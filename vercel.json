@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "name": "amala-maps",
   "builds": [
     {
       "src": "package.json",
@@ -13,10 +12,5 @@
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@supabase_anon_key",
     "SUPABASE_SERVICE_ROLE_KEY": "@supabase_service_key",
     "GOOGLE_GEMINI_API_KEY": "@gemini_api_key"
-  },
-  "functions": {
-    "src/app/api/**/*.ts": {
-      "maxDuration": 30
-    }
   }
 }
