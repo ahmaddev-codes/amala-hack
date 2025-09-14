@@ -28,10 +28,17 @@ export class AutonomousDiscoveryService {
       enabled: true,
       searchQueries: [
         "amala restaurant Lagos Nigeria",
-        "Nigerian food Lagos",
-        "Yoruba restaurant Lagos",
-        "traditional Nigerian cuisine Lagos",
-        "ewedu gbegiri Lagos",
+        "amala spots Ikeja Lagos",
+        "amala restaurants Surulere Lagos",
+        "best amala Yaba Lagos",
+        "amala bukka Victoria Island Lagos",
+        "traditional amala Lekki Lagos",
+        "ewedu gbegiri restaurants Lagos Island",
+        "Yoruba food Gbagada Lagos",
+        "Nigerian amala Mushin Lagos",
+        "amala eatery Alimosho Lagos",
+        "swallow and ewedu Agege Lagos",
+        "amala and gbegiri Ojota Lagos",
       ],
     },
     {
@@ -157,7 +164,7 @@ export class AutonomousDiscoveryService {
             );
 
             if (response.data.results) {
-              for (const place of response.data.results.slice(0, 5)) { // Reduced to 5 per query to limit API calls
+              for (const place of response.data.results.slice(0, 10)) { // Increased to 10 per query for more coverage
                 const details = await this.fetchPlaceDetails(place.place_id, googleApiKey);
                 if (!details) continue;
 
@@ -224,52 +231,85 @@ export class AutonomousDiscoveryService {
    * Discover locations from social media sources
    */
   static async discoverFromSocialMedia(): Promise<Partial<AmalaLocation>[]> {
-    // For MVP, return curated social media discoveries
-    // In production, integrate with Twitter API, Instagram API, etc.
+    const socialDiscoveries: Partial<AmalaLocation>[] = [];
 
-    const socialDiscoveries: Partial<AmalaLocation>[] = [
-      {
-        name: "Bukka Hut",
-        address: "Multiple locations in Lagos, Nigeria",
-        coordinates: { lat: 6.5244, lng: 3.3792 },
-        description:
-          "Popular chain mentioned frequently on social media for Amala",
-        discoverySource: "social-media",
-        sourceUrl: "https://twitter.com/search?q=bukka+hut+amala",
-        isOpenNow: true,
-        serviceType: "both",
-        priceRange: "$",
-        cuisine: ["Nigerian", "Fast-casual"],
-        rating: 4.1,
-      },
-      {
-        name: "Amala Zone",
-        address: "Surulere, Lagos, Nigeria",
-        coordinates: { lat: 6.5052, lng: 3.3629 },
-        description:
-          "Trending Amala spot discovered through Instagram hashtags",
-        discoverySource: "social-media",
-        sourceUrl: "https://instagram.com/explore/tags/amalazone",
-        isOpenNow: true,
-        serviceType: "dine-in",
-        priceRange: "$",
-        cuisine: ["Nigerian", "Traditional"],
-        rating: 4.4,
-      },
-      {
-        name: "Mama Cass Kitchen",
-        address: "Ikeja, Lagos, Nigeria",
-        coordinates: { lat: 6.6093, lng: 3.3439 },
-        description: "Went viral on TikTok for exceptional Amala and Ewedu",
-        discoverySource: "social-media",
-        sourceUrl: "https://tiktok.com/@mamacasskitchen",
-        isOpenNow: false,
-        serviceType: "both",
-        priceRange: "$",
-        cuisine: ["Nigerian", "Home-style"],
-        rating: 4.7,
-      },
-    ];
+    // Twitter (X) API Integration
+    const twitterBearerToken = process.env.TWITTER_BEARER_TOKEN;
+    if (twitterBearerToken) {
+      try {
+        const { TwitterApi } = await import('twitter-api-v2');
+        const client = new TwitterApi(twitterBearerToken);
+
+        const queries = [
+          '#AmalaLagos OR #AmalaNigeria lang:en geocode:6.5244,3.3792,50km',
+          'amala restaurant Lagos -is:retweet',
+          'best amala Lagos -is:retweet',
+          'ewedu gbegiri Lagos -is:retweet',
+          'Yoruba food Lagos -is:retweet',
+        ];
+
+        for (const query of queries) {
+          const tweets = await client.v2.search(query, {
+            'tweet.fields': 'author_id,text,geo,created_at,public_metrics',
+            max_results: 10,
+            'expansions': 'author_id',
+            'user.fields': 'name,location',
+          });
+
+          if (tweets.data) {
+            for (const tweet of tweets.data.data) {
+              const text = tweet.text.toLowerCase();
+              // Simple extraction: look for potential location names (capitalized words) and addresses (Lagos mentions)
+              const potentialName = text.match(/([A-Z][a-z]+(?:\s[A-Z][a-z]+){1,3})\s+(restaurant|bukka|spot|place)/i)?.[1] || '';
+              if (potentialName && text.includes('lagos')) {
+                socialDiscoveries.push({
+                  name: potentialName,
+                  address: "Lagos, Nigeria",
+                  coordinates: { lat: 6.5244, lng: 3.3792 },
+                  description: `Discovered via Twitter: ${tweet.text.substring(0, 200)}...`,
+                  discoverySource: "social-media",
+                  sourceUrl: `https://twitter.com/i/status/${tweet.id}`,
+                  isOpenNow: true,
+                  serviceType: "both",
+                  priceRange: "$$",
+                  cuisine: ["Nigerian"],
+                  rating: 4.0,
+                });
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Twitter API error:', error);
+      }
+    } else {
+      console.warn('Twitter Bearer Token not configured. Set TWITTER_BEARER_TOKEN in .env.local');
+    }
+
+    // Instagram Graph API Integration (Placeholder - requires Facebook Developer App setup)
+    // To integrate:
+    // 1. Create Facebook App at developers.facebook.com
+    // 2. Add Instagram Graph API product
+    // 3. Get long-lived access token with instagram_basic, pages_show_list permissions
+    // 4. Use the following code template:
+    /*
+    const instagramAccessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+    if (instagramAccessToken) {
+      try {
+        const response = await axios.get('https://graph.facebook.com/v18.0/me/media', {
+          params: {
+            fields: 'id,caption,media_url,permalink,username,timestamp',
+            access_token: instagramAccessToken,
+            limit: 20,
+          },
+        });
+        // Process captions for Amala mentions similar to Twitter
+      } catch (error) {
+        console.error('Instagram API error:', error);
+      }
+    }
+    */
+
     return socialDiscoveries;
   }
 
@@ -511,11 +551,6 @@ export class AutonomousDiscoveryService {
       sunday: { open: "10:00", close: "18:00", isOpen: false },
     };
   }
-
-  /**
-   * Fallback simulated discoveries for demo purposes
-   */
-  // Remove simulated method as it's no longer needed with real scraping
 
   /**
    * Schedule autonomous discovery to run periodically

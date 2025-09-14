@@ -119,6 +119,57 @@ export class WebScrapingService {
       },
       searchQueries: ["amala", "nigerian cuisine"],
     },
+    {
+      url: "https://www.zomato.com/lagos/amala-restaurants",
+      type: "directory",
+      selectors: {
+        name: ".sc-1hp8d8a-0, h4, .restaurant-name",
+        address: ".sc-1hp8d8a-2, .address",
+        phone: ".contact-info",
+        rating: ".rating",
+        price: ".cost-for-two",
+        reviews: ".review-text",
+      },
+      searchQueries: ["amala lagos"],
+    },
+    {
+      url: "https://www.vconnect.com/search?q=amala+lagos",
+      type: "business-directory",
+      selectors: {
+        name: ".business-name, h3",
+        address: ".address, .location",
+        phone: ".phone-number",
+        website: ".website-link",
+        rating: ".rating-stars",
+        price: ".price-range",
+      },
+      searchQueries: ["amala restaurants lagos"],
+    },
+    {
+      url: "https://www.yelp.com/search?find_desc=Amala&find_loc=Lagos%2C+Lagos%2C+Nigeria",
+      type: "review-site",
+      selectors: {
+        name: ".business-name, h3",
+        address: ".address",
+        rating: ".rating",
+        price: ".price-range",
+        reviews: ".review-content",
+      },
+      searchQueries: ["amala lagos"],
+    },
+    {
+      url: "https://lagosfoodguide.com/category/amala/",
+      type: "blog",
+      selectors: {
+        name: ".post-title, h2",
+        address: ".location-details",
+        phone: ".contact-info",
+        rating: ".stars",
+        price: ".price",
+        reviews: ".comment-body",
+      },
+      searchQueries: ["best amala lagos"],
+    },
   ];
 
   static async discoverLocations(): Promise<AmalaLocation[]> {
