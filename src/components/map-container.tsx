@@ -30,6 +30,7 @@ interface MapContainerProps {
     serviceType?: string;
     priceRange?: string[];
   };
+  onLocationApproved?: (locationId: string) => void;  // New prop for moderation callback
 }
 
 export function MapContainer({
@@ -329,9 +330,9 @@ export function MapContainer({
 
       {/* Loading overlay */}
       {isLoading && (
-        <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center z-10">
+        <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-primary/5 to-indigo-100 flex items-center justify-center z-10">
           <div className="text-center">
-            <Loader2 className="w-8 h-8 mx-auto mb-4 text-blue-600 animate-spin" />
+            <Loader2 className="w-8 h-8 mx-auto mb-4 text-primary animate-spin" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
               Loading Map
             </h3>
@@ -386,7 +387,7 @@ export function MapContainer({
 
             <button
               onClick={initializeMap}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+              className="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary transition-colors text-sm"
             >
               Retry Loading Map
             </button>
@@ -403,26 +404,26 @@ export function MapContainer({
             onLocationSelect={onLocationSelect}
           />
 
-          <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-2">
-            <div className="text-sm text-gray-600">
-              <span className="font-medium">{locations.length}</span> locations
+          <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-2 border border-primary/20 transition-all duration-200 hover:shadow-xl hover:bg-white">
+            <div className="text-sm text-gray-700">
+              <span className="font-medium text-primary">{locations.length}</span> locations
             </div>
           </div>
 
-          <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-3">
-            <h4 className="text-sm font-medium text-gray-900 mb-2">
+          <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-primary/20 transition-all duration-200 hover:shadow-xl hover:bg-white">
+            <h4 className="text-sm font-medium text-primary mb-2">
               Map Legend
             </h4>
             <div className="space-y-1 text-xs">
-              <div className="flex items-center">
+              <div className="flex items-center hover:text-primary transition-colors duration-150">
                 <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
                 <span>Open Now</span>
               </div>
-              <div className="flex items-center">
+              <div className="flex items-center hover:text-primary transition-colors duration-150">
                 <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
                 <span>Closed</span>
               </div>
-              <div className="flex items-center mt-2">
+              <div className="flex items-center mt-2 hover:text-primary transition-colors duration-150">
                 <span className="text-green-600">$ </span>
                 <span className="text-yellow-600">$$ </span>
                 <span className="text-red-600">$$$ </span>

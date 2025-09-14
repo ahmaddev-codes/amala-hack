@@ -72,7 +72,7 @@ export function DuplicateWarning({
                       href={location.website}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
+                      className="text-primary hover:underline"
                     >
                       {location.website}
                     </a>

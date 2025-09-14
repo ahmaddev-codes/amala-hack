@@ -1,6 +1,7 @@
 "use client";
 
-import { X, Clock, MapPin, DollarSign, Utensils } from "lucide-react";
+import { X, Clock, MapPin, DollarSign, Utensils, SortAsc } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LocationFilter } from "@/types/location";
 
 interface FilterSidebarProps {
@@ -82,14 +83,14 @@ export function FilterSidebar({
                   }
                   className="sr-only peer"
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
               </label>
             </div>
 
             {/* Service Type */}
             <div>
               <div className="flex items-center gap-3 mb-3">
-                <MapPin className="h-5 w-5 text-blue-600" />
+                <MapPin className="h-5 w-5 text-primary" />
                 <span className="text-sm font-medium text-gray-900">
                   Service type
                 </span>
@@ -114,7 +115,7 @@ export function FilterSidebar({
                     }
                     className={`px-3 py-1 text-sm font-medium rounded-full border transition-colors duration-200 ${
                       (filters.serviceType || "all") === option.value
-                        ? "bg-blue-600 text-white border-blue-600"
+                        ? "bg-primary text-white border-primary"
                         : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200"
                     }`}
                   >
@@ -158,7 +159,7 @@ export function FilterSidebar({
                       }}
                       className={`px-3 py-1 text-sm font-medium rounded-full border transition-colors duration-200 ${
                         isSelected
-                          ? "bg-blue-600 text-white border-blue-600"
+                          ? "bg-primary text-white border-primary"
                           : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200"
                       }`}
                     >
@@ -200,7 +201,7 @@ export function FilterSidebar({
                       }}
                       className={`px-3 py-1 text-sm font-medium rounded-full border transition-colors duration-200 ${
                         isSelected
-                          ? "bg-blue-600 text-white border-blue-600"
+                          ? "bg-primary text-white border-primary"
                           : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200"
                       }`}
                     >
@@ -211,11 +212,38 @@ export function FilterSidebar({
               </div>
             </div>
 
+            {/* Sort Order */}
+            <div>
+              <div className="flex items-center gap-3 mb-3">
+                <SortAsc className="h-5 w-5 text-primary" />
+                <span className="text-sm font-medium text-gray-900">
+                  Sort Order
+                </span>
+              </div>
+              <Select
+                value={filters.sortBy || "default"}
+                onValueChange={(value) =>
+                  onFilterChange({
+                    sortBy: value as "name_asc" | "name_desc" | "default",
+                  })
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Default" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default</SelectItem>
+                  <SelectItem value="name_asc">A-Z (Alphabetical)</SelectItem>
+                  <SelectItem value="name_desc">Z-A (Reverse Alphabetical)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Clear Filters */}
             <div className="pt-4 border-t border-gray-200">
               <button
                 onClick={() => onFilterChange({})}
-                className="w-full py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors duration-200"
+                className="w-full py-2 text-sm font-medium text-primary hover:bg-primary/5 rounded-lg transition-colors duration-200"
               >
                 Clear all
               </button>

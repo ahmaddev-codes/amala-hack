@@ -4,26 +4,53 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Google Product Sans (fallback to Inter which is very similar) */
+/* Google Sans Font from local files */
 @font-face {
-  font-family: "Product Sans";
-  src: local("Inter"), local("Inter-Regular");
+  font-family: 'Google Sans';
+  src: url('/fonts/GoogleSans-Regular.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
-  font-family: "Product Sans";
-  src: local("Inter Medium"), local("Inter-Medium");
+  font-family: 'Google Sans';
+  src: url('/fonts/GoogleSans-Medium.ttf') format('truetype');
   font-weight: 500;
   font-style: normal;
+  font-display: swap;
 }
 
 @font-face {
-  font-family: "Product Sans";
-  src: local("Inter SemiBold"), local("Inter-SemiBold");
-  font-weight: 600;
+  font-family: 'Google Sans';
+  src: url('/fonts/GoogleSans-Bold.ttf') format('truetype');
+  font-weight: 700;
   font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  src: url('/fonts/GoogleSans-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  src: url('/fonts/GoogleSans-MediumItalic.ttf') format('truetype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  src: url('/fonts/GoogleSans-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
 }
 
 @custom-variant dark (&:is(.dark *));
@@ -31,8 +58,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Product Sans", "Inter", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Google Sans", Roboto, "Inter", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -77,7 +104,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --primary: #007B8B;
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -111,7 +138,7 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
+  --primary: #007B8B;
   --primary-foreground: oklch(0.205 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
@@ -138,15 +165,94 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* High-contrast mode */
+.high-contrast {
+  --background: white;
+  --foreground: black;
+  --card: white;
+  --card-foreground: black;
+  --popover: white;
+  --popover-foreground: black;
+  --primary: #0000FF; /* Dark blue for high contrast */
+  --primary-foreground: white;
+  --secondary: #E5E5E5;
+  --secondary-foreground: black;
+  --muted: #E5E5E5;
+  --muted-foreground: black;
+  --accent: #E5E5E5;
+  --accent-foreground: black;
+  --destructive: #FF0000;
+  --border: #000000;
+  --input: #000000;
+  --ring: #0000FF;
+  --sidebar: white;
+  --sidebar-foreground: black;
+  --sidebar-primary: #0000FF;
+  --sidebar-primary-foreground: white;
+  --sidebar-accent: #E5E5E5;
+  --sidebar-accent-foreground: black;
+  --sidebar-border: #000000;
+  --sidebar-ring: #0000FF;
+}
+
+.dark.high-contrast {
+  --background: black;
+  --foreground: white;
+  --card: black;
+  --card-foreground: white;
+  --popover: black;
+  --popover-foreground: white;
+  --primary: #0000FF;
+  --primary-foreground: white;
+  --secondary: #1A1A1A;
+  --secondary-foreground: white;
+  --muted: #1A1A1A;
+  --muted-foreground: white;
+  --accent: #1A1A1A;
+  --accent-foreground: white;
+  --destructive: #FF0000;
+  --border: #FFFFFF;
+  --input: #FFFFFF;
+  --ring: #0000FF;
+  --sidebar: black;
+  --sidebar-foreground: white;
+  --sidebar-primary: #0000FF;
+  --sidebar-primary-foreground: white;
+  --sidebar-accent: #1A1A1A;
+  --sidebar-accent-foreground: white;
+  --sidebar-border: #FFFFFF;
+  --sidebar-ring: #0000FF;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
-    font-family: "Product Sans", "Inter", -apple-system, BlinkMacSystemFont,
-      "Segoe UI", Roboto, sans-serif;
+    font-family: "Google Sans", Roboto, "Inter", -apple-system, BlinkMacSystemFont,
+      "Segoe UI", sans-serif;
+  }
+
+  /* Focus-visible styles for accessibility */
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
-
-/* Clean Google Maps-style design */

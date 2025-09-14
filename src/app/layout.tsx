@@ -19,13 +19,29 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "/google-map-logo.jpg",
-        sizes: "32x32",
-        type: "image/jpeg",
+        url: "/google-maps-logo.png",
+        sizes: "64x64",
+        type: "image/png",
+      },
+      {
+        url: "/google-maps-logo.png",
+        sizes: "128x128",
+        type: "image/png",
+      },
+      {
+        url: "/google-maps-logo.png",
+        sizes: "192x192",
+        type: "image/png",
       },
     ],
-    shortcut: "/google-map-logo.jpg",
-    apple: "/google-map-logo.jpg",
+    shortcut: "/google-maps-logo.png",
+    apple: [
+      {
+        url: "/google-maps-logo.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
   },
 };
 

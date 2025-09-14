@@ -27,6 +27,7 @@ interface ModerationPanelProps {
   onReject?: (locationId: string, reason: string, notes?: string) => void;
   onBulkAction?: (locationIds: string[], action: "approve" | "reject") => void;
   onPendingCountChange?: (count: number) => void;
+  onLocationApproved?: (locationId: string) => void;  // New callback for real-time update
 }
 
 export function ModerationPanel({
@@ -144,7 +145,7 @@ export function ModerationPanel({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Bot className="w-5 h-5 text-blue-600" />
+            <Bot className="w-5 h-5 text-primary" />
             Moderation Center
           </DialogTitle>
         </DialogHeader>
@@ -189,7 +190,7 @@ export function ModerationPanel({
             <>
               {isLoading ? (
                 <div className="flex items-center justify-center py-8">
-                  <Clock className="w-6 h-6 text-blue-500 animate-spin mr-2" />
+                  <Clock className="w-6 h-6 text-primary animate-spin mr-2" />
                   <span>Loading pending locations...</span>
                 </div>
               ) : pendingLocations.length === 0 ? (
@@ -202,7 +203,7 @@ export function ModerationPanel({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="text-sm text-blue-600 mb-4 p-2 bg-blue-50 rounded">
+                  <div className="text-sm text-primary mb-4 p-2 bg-primary/5 rounded">
                     📊 Found {pendingLocations.length} pending locations to
                     review
                   </div>
@@ -211,7 +212,7 @@ export function ModerationPanel({
                       key={location.id}
                       className="border rounded-lg p-4 bg-gray-50"
                     >
-                      <div className="flex items-start justify-between">
+                      <div>
                         <div className="flex-1">
                           <h3 className="font-semibold text-lg text-gray-900">
                             {location.name}
@@ -234,7 +235,7 @@ export function ModerationPanel({
                                   href={location.website}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-blue-600 hover:underline"
+                                  className="text-primary hover:underline"
                                 >
                                   {location.website}
                                 </a>
@@ -255,7 +256,7 @@ export function ModerationPanel({
                             )}
                           </div>
                         </div>
-                        <div className="ml-4 flex space-x-2">
+                        <div className="mt-4 flex flex-wrap gap-2 justify-end">
                           <button
                             onClick={(e) => {
                               e.preventDefault();
@@ -266,11 +267,11 @@ export function ModerationPanel({
                               );
                               handleApproveClick(location.id);
                             }}
-                            className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center cursor-pointer"
+                            className="px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center cursor-pointer min-w-[80px] justify-center"
                             style={{ pointerEvents: "auto" }}
                           >
                             <CheckCircle className="w-4 h-4 mr-1" />
-                            Approve
+                            <span className="hidden sm:inline">Approve</span>
                           </button>
                           <button
                             onClick={(e) => {
@@ -282,11 +283,11 @@ export function ModerationPanel({
                               );
                               handleRejectClick(location.id);
                             }}
-                            className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center cursor-pointer"
+                            className="px-3 py-1 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center cursor-pointer min-w-[80px] justify-center"
                             style={{ pointerEvents: "auto" }}
                           >
                             <XCircle className="w-4 h-4 mr-1" />
-                            Reject
+                            <span className="hidden sm:inline">Reject</span>
                           </button>
                         </div>
                       </div>

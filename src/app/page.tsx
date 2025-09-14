@@ -8,7 +8,6 @@ import { LocationList } from "@/components/location-list";
 import { AgenticIntake } from "@/components/agentic-intake";
 import { ModerationPanel } from "@/components/moderation-panel";
 import { MobileBottomSheet } from "@/components/mobile-bottom-sheet";
-import { filterLocations } from "@/data/locations";
 import { dbOperations } from "@/lib/database/supabase";
 import { LocationService } from "@/lib/services/location-service";
 import {
@@ -32,7 +31,19 @@ export default function Home() {
   const [searchResults, setSearchResults] = useState<AmalaLocation[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
 
-  // Search functionality
+    async function refreshApprovedLocations() {
+      try {
+        console.log("🔄 Refreshing approved locations...");
+        const allLocations = await dbOperations.getAllLocations({});
+        const approvedLocations = allLocations.filter((loc) => loc.status === "approved");
+        setLocations(approvedLocations);
+        console.log(`✅ Refreshed ${approvedLocations.length} approved locations`);
+      } catch (error) {
+        console.error("❌ Error refreshing approved locations:", error);
+      }
+    }
+  
+    // Search functionality
   const handleSearch = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
@@ -64,28 +75,34 @@ export default function Home() {
         setIsLoadingLocations(true);
 
         // Load locations from database
-        console.log("📍 Loading Amala locations from database...");
+        console.log("📍 Loading all Amala locations from database...");
         console.log(
           "🔗 Supabase URL:",
           process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 30) + "..."
         );
 
-        const loadedLocations = await dbOperations.getLocations();
+        const allLocations = await dbOperations.getAllLocations({});
+        const loadedLocations = allLocations.filter(
+          (loc) => loc.status === "approved"
+        );
 
         console.log(
           `✅ Loaded ${loadedLocations.length} approved locations from Supabase`
         );
 
-        if (loadedLocations.length === 0) {
-          console.log(
-            "ℹ️ No locations found in database. Database is empty or table doesn't exist."
-          );
-        } else {
-          console.log("📋 First location:", loadedLocations[0]?.name);
-        }
+        const locationsToUse = loadedLocations;
 
-        setLocations(loadedLocations);
-        setFilteredLocations(loadedLocations);
+        console.log(
+          "📋 First location:",
+          loadedLocations[0]?.name || "No locations"
+        );
+
+        setLocations(locationsToUse);
+        setFilteredLocations(locationsToUse);
+        
+        // Load pending count on page load
+        const pending = await dbOperations.getLocationsByStatus("pending");
+        setPendingCount(pending.length);
       } catch (error) {
         console.error("❌ Error loading locations from database:", error);
         console.error(
@@ -99,22 +116,26 @@ export default function Home() {
     loadLocations();
   }, []);
 
-  // Filter locations when filters change
+  // Filter locations when filters change - server-side
   useEffect(() => {
-    console.log("🔍 Applying filters:", filters);
-    console.log("📍 Total locations before filtering:", locations.length);
+    const fetchFiltered = async () => {
+      if (Object.keys(filters).length === 0) {
+        setFilteredLocations(locations);
+        return;
+      }
+      try {
+        console.log("🔍 Applying server-side filters:", filters);
+        const allFiltered = await dbOperations.getAllLocations(filters);
+        console.log("✅ Fetched all filtered locations:", allFiltered.length);
+        const filtered = allFiltered.filter((loc) => loc.status === "approved");
+        setFilteredLocations(filtered);
+      } catch (error) {
+        console.error("Error fetching filtered locations:", error);
+      }
+    };
 
-    const filtered = filterLocations(locations, {
-      searchQuery: filters.searchQuery,
-      isOpenNow: filters.isOpenNow,
-      serviceType: filters.serviceType,
-      priceRange: filters.priceRange,
-      cuisine: filters.cuisine,
-    });
-
-    console.log("✅ Filtered locations:", filtered.length);
-    setFilteredLocations(filtered);
-  }, [locations, filters]);
+    fetchFiltered();
+  }, [filters, locations]);
 
   const handleFilterChange = (newFilters: Partial<LocationFilter>) => {
     // If it's a clear operation (empty object), reset all filters
@@ -168,9 +189,12 @@ export default function Home() {
       console.log("✅ Location submitted successfully:", result.data);
 
       // Refresh locations to include the new pending location
-      const loadedLocations = await dbOperations.getLocations();
-      setLocations(loadedLocations);
-      setFilteredLocations(loadedLocations);
+      const allLocations = await dbOperations.getAllLocations({});
+      const approvedLocations = allLocations.filter(
+        (loc) => loc.status === "approved"
+      );
+      setLocations(approvedLocations);
+      setFilteredLocations(approvedLocations);
 
       setShowIntakeDialog(false);
 
@@ -192,22 +216,9 @@ export default function Home() {
       // Update the database first
       await dbOperations.updateLocationStatus(locationId, "approved");
       console.log("✅ Page: Database updated successfully");
-
-      // Then update local state
-      setLocations((prev) =>
-        prev.map((location) =>
-          location.id === locationId
-            ? {
-                ...location,
-                status: "approved",
-                moderatedAt: new Date(),
-                moderationNotes: verificationNotes,
-              }
-            : location
-        )
-      );
-
-      console.log("✅ Page: Local state updated");
+      
+      // Refresh the approved locations list to include the new one
+      await refreshApprovedLocations();
     } catch (error) {
       console.error("❌ Page: Error approving location:", error);
       alert(
@@ -229,23 +240,6 @@ export default function Home() {
       // Update the database first
       await dbOperations.updateLocationStatus(locationId, "rejected");
       console.log("✅ Page: Database updated successfully");
-
-      // Then update local state
-      setLocations((prev) =>
-        prev.map((location) =>
-          location.id === locationId
-            ? {
-                ...location,
-                status: "rejected",
-                moderatedAt: new Date(),
-                rejectionReason: reason,
-                moderationNotes: notes,
-              }
-            : location
-        )
-      );
-
-      console.log("✅ Page: Local state updated");
     } catch (error) {
       console.error("❌ Page: Error rejecting location:", error);
       alert(
@@ -288,7 +282,7 @@ export default function Home() {
         />
         <div className="flex-1 flex items-center justify-center bg-gray-50">
           <div className="text-center">
-            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">
               Loading Amala Locations
             </h3>

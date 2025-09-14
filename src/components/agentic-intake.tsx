@@ -149,7 +149,7 @@ export function AgenticIntake({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           location,
-          existingLocations: [], // In real app, pass existing locations
+          existingLocations, // Use the prop for actual duplicate detection
         }),
       });
 

@@ -20,7 +20,8 @@ export async function POST(request: NextRequest) {
 
     // Generate follow-up question if needed
     const followUp = await AILocationService.generateFollowUpQuestion(
-      extraction.extracted
+      extraction.extracted,
+      conversationHistory
     );
 
     return NextResponse.json({

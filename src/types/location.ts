@@ -15,6 +15,7 @@ export interface AmalaLocation {
   isOpenNow: boolean;
   serviceType: "dine-in" | "takeaway" | "both";
   priceRange: "$" | "$$" | "$$$" | "$$$$";
+  priceInfo?: string; // Real price details e.g. "₦1000-3000 per person"
 
   // Additional metadata
   cuisine: string[];
@@ -42,9 +43,12 @@ export interface AmalaLocation {
   moderatedAt?: Date;
   moderatedBy?: string;
 
-  // Ratings and reviews
+  // Ratings and reviews (aggregated)
   rating?: number;
   reviewCount?: number;
+
+  // Individual reviews (for client-side)
+  reviews?: Review[];
 
   // Image URLs
   images?: string[];
@@ -58,6 +62,16 @@ export interface AmalaLocation {
     | "google-places-api"
     | "autonomous-discovery";
   sourceUrl?: string;
+}
+
+export interface Review {
+  id: string;
+  location_id: string;
+  author: string;
+  rating: number; // 1-5
+  text?: string;
+  date_posted: Date;
+  status: "pending" | "approved" | "rejected";
 }
 
 export interface LocationFilter {
@@ -74,6 +88,7 @@ export interface LocationFilter {
     east: number;
     west: number;
   };
+  sortBy?: 'name_asc' | 'name_desc' | 'default';
 }
 
 export interface LocationSubmission {
@@ -84,6 +99,7 @@ export interface LocationSubmission {
   description?: string;
   serviceType: "dine-in" | "takeaway" | "both";
   priceRange: "$" | "$$" | "$$$" | "$$$$";
+  priceInfo?: string;
   cuisine: string[];
   submitterInfo?: {
     name?: string;
