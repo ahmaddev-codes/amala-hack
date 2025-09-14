@@ -158,7 +158,7 @@ export function LocationInfoWindow({
           {location.phone && (
             <button
               onClick={handleCall}
-              className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+              className="flex items-center gap-2 text-sm text-primary hover:text-primary"
             >
               <Phone className="w-4 h-4" />
               <span>{location.phone}</span>
@@ -168,7 +168,7 @@ export function LocationInfoWindow({
           {location.website && (
             <button
               onClick={handleWebsite}
-              className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+              className="flex items-center gap-2 text-sm text-primary hover:text-primary"
             >
               <Globe className="w-4 h-4" />
               <span>Visit website</span>
@@ -180,7 +180,7 @@ export function LocationInfoWindow({
         <div className="flex gap-2">
           <button
             onClick={handleDirections}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex-1 bg-primary hover:bg-primary text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
           >
             <Navigation className="w-4 h-4" />
             Directions

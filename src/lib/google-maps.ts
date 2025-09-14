@@ -68,16 +68,23 @@ export const loadGoogleMaps = (config: GoogleMapsConfig): Promise<void> => {
     const script = document.createElement("script");
     const libraries = config.libraries?.join(",") || "places,geometry";
 
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${config.apiKey}&libraries=${libraries}&v=weekly`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${config.apiKey}&libraries=${libraries}&v=weekly&callback=initMap`;
     script.async = true;
     script.defer = true;
 
+    // Define the callback function if not already defined
+    if (typeof window !== 'undefined' && !window.initMap) {
+      (window as any).initMap = () => {
+        if (window.google && window.google.maps) {
+          resolve();
+        } else {
+          reject(new Error("Google Maps failed to load"));
+        }
+      };
+    }
+
     script.onload = () => {
-      if (window.google && window.google.maps) {
-        resolve();
-      } else {
-        reject(new Error("Google Maps failed to load"));
-      }
+      // Callback will handle resolution
     };
 
     script.onerror = (error) => {
@@ -167,20 +174,28 @@ export const formatLocationInfo = (location: {
     ? `★ ${location.rating} (${location.reviewCount} reviews)`
     : "";
 
+  const priceLabels = {
+    '$': 'Budget-Friendly',
+    '$$': 'Moderate',
+    '$$$': 'Expensive',
+    '$$$$': 'Premium'
+  };
+  const priceLabel = priceLabels[location.priceRange as keyof typeof priceLabels] || 'Unknown';
+
   return `
     <div class="p-4 max-w-sm">
       <h3 class="font-bold text-lg text-gray-900 mb-2">${location.name}</h3>
       <p class="text-gray-600 text-sm mb-2">${location.address}</p>
       <div class="flex items-center justify-between mb-2">
         <span class="${statusColor} text-sm font-medium">${statusText}</span>
-        <span class="text-gray-500 text-sm">${location.priceRange}</span>
+        <span class="text-gray-500 text-sm">${location.priceRange} - ${priceLabel}</span>
       </div>
       ${rating ? `<p class="text-yellow-500 text-sm mb-2">${rating}</p>` : ""}
       <div class="flex flex-wrap gap-1 mb-3">
         ${location.cuisine
           .map(
             (c: string) =>
-              `<span class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">${c}</span>`
+              `<span class="bg-primary/10 text-primary text-xs px-2 py-1 rounded">${c}</span>`
           )
           .join("")}
       </div>
@@ -192,12 +207,12 @@ export const formatLocationInfo = (location: {
       <div class="flex gap-2">
         ${
           location.phone
-            ? `<a href="tel:${location.phone}" class="text-blue-600 text-sm hover:underline">Call</a>`
+            ? `<a href="tel:${location.phone}" class="text-primary text-sm hover:underline">Call</a>`
             : ""
         }
         ${
           location.website
-            ? `<a href="${location.website}" target="_blank" class="text-blue-600 text-sm hover:underline">Website</a>`
+            ? `<a href="${location.website}" target="_blank" class="text-primary text-sm hover:underline">Website</a>`
             : ""
         }
       </div>
@@ -208,5 +223,6 @@ export const formatLocationInfo = (location: {
 declare global {
   interface Window {
     google: typeof google;
+    initMap?: () => void;
   }
 }

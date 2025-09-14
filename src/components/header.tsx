@@ -1,7 +1,8 @@
 "use client";
 
+import React from "react";
 import { useState, useEffect } from "react";
-import { Menu, Plus, Search, Shield, X, MapPin } from "lucide-react";
+import { Menu, Plus, Search, Shield, X, MapPin, Eye } from "lucide-react";
 
 interface HeaderProps {
   onAddLocation: () => void;
@@ -30,6 +31,26 @@ export function Header({
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [highContrast, setHighContrast] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('highContrast') === 'true';
+    setHighContrast(saved);
+    if (saved) {
+      document.body.classList.add('high-contrast');
+    }
+  }, []);
+
+  const toggleHighContrast = () => {
+    const newValue = !highContrast;
+    setHighContrast(newValue);
+    if (newValue) {
+      document.body.classList.add('high-contrast');
+    } else {
+      document.body.classList.remove('high-contrast');
+    }
+    localStorage.setItem('highContrast', newValue.toString());
+  };
 
   // Debounced search
   useEffect(() => {
@@ -58,7 +79,7 @@ export function Header({
           {/* Menu button */}
           <button
             onClick={onToggleSidebar}
-            className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200 flex-shrink-0"
+            className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200 flex-shrink-0 cursor-pointer"
           >
             <Menu className="h-5 w-5 text-gray-700" />
           </button>
@@ -82,7 +103,7 @@ export function Header({
                     setSearchQuery("");
                     setShowSearchResults(false);
                   }}
-                  className="ml-1 p-1 rounded-full hover:bg-gray-100 transition-colors duration-200 flex-shrink-0"
+                  className="ml-1 p-1 rounded-full hover:bg-gray-100 transition-colors duration-200 flex-shrink-0 cursor-pointer"
                 >
                   <X className="h-3 w-3 text-gray-500" />
                 </button>
@@ -127,13 +148,14 @@ export function Header({
             {onShowModeration && (
               <button
                 onClick={onShowModeration}
-                className="relative bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full px-4 py-2 text-xs font-medium transition-colors duration-200 flex items-center gap-1"
+                className="relative bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-full px-4 py-2 text-xs font-medium transition-colors duration-200 flex items-center gap-1 max-w-[100px] sm:max-w-none"
+                style={{ minWidth: 0 }}
               >
-                <Shield className="h-3 w-3" />
-                <span className="hidden sm:inline">Moderate</span>
+                <Shield className="h-3 w-3 flex-shrink-0" />
+                <span className="hidden xs:inline sm:inline whitespace-nowrap">Moderate</span>
                 {pendingCount && pendingCount > 0 && (
-                  <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center font-medium">
-                    {pendingCount}
+                  <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold min-w-[20px]">
+                    {pendingCount > 99 ? '99+' : pendingCount}
                   </div>
                 )}
               </button>
@@ -141,10 +163,11 @@ export function Header({
 
             <button
               onClick={onAddLocation}
-              className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-4 py-2 text-xs font-medium transition-colors duration-200 flex items-center gap-1"
+              className="bg-primary hover:bg-primary text-white rounded-full px-3 py-2 text-xs font-medium transition-colors duration-200 flex items-center gap-1 max-w-[90px] sm:max-w-none overflow-hidden"
+              style={{ minWidth: 0 }}
             >
               <Plus className="h-3 w-3" />
-              <span className="hidden sm:inline">Add place</span>
+              <span className="hidden xs:inline sm:inline">Add place</span>
             </button>
           </div>
         </div>

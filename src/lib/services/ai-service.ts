@@ -31,31 +31,33 @@ export class AILocationService {
     try {
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-      const prompt = `You are an AI assistant specialized in extracting Amala restaurant information from user messages.
-
-Extract the following information when available from this message: "${userMessage}"
-
-Context from previous conversation:
-${conversationHistory.map((msg) => `${msg.role}: ${msg.content}`).join("\n")}
-
-Return ONLY a valid JSON object with this exact structure:
-{
-  "extracted": {
-    "name": "Restaurant name if mentioned",
-    "address": "Full address if mentioned",
-    "phone": "Phone number if mentioned", 
-    "website": "Website URL if mentioned",
-    "description": "Brief description",
-    "serviceType": "dine-in" | "takeaway" | "both",
-    "priceRange": "$" | "$$" | "$$$" | "$$$$",
-    "cuisine": ["cuisine", "types"]
-  },
-  "confidence": 85,
-  "missingFields": ["field1", "field2"],
-  "suggestions": ["What's the phone number?", "What are the hours?"]
-}
-
-Only include fields in "extracted" that are explicitly mentioned. Set confidence 0-100 based on completeness.`;
+      const prompt = `You are an AI assistant specialized in extracting Amala restaurant information from user messages. IMPORTANT: ONLY extract information EXPLICITLY mentioned in the current message. Do NOT infer, assume, or hallucinate any details not directly stated. If a field is not explicitly provided, leave it as an empty string "" in the extracted object.
+    
+    Review the full conversation history to understand context, but extraction must be based solely on explicit mentions in this specific message.
+    
+    Current message: "${userMessage}"
+    
+    Full conversation history:
+    ${conversationHistory.map((msg) => `${msg.role}: ${msg.content}`).join("\n")}
+    
+    Return ONLY a valid JSON object with this exact structure (no additional text or explanations):
+    {
+      "extracted": {
+        "name": "" or "exact restaurant name if explicitly mentioned",
+        "address": "" or "full exact address if explicitly mentioned",
+        "phone": "" or "exact phone number if explicitly mentioned",
+        "website": "" or "exact website URL if explicitly mentioned",
+        "description": "" or "exact brief description if explicitly mentioned",
+        "serviceType": "" or "dine-in" | "takeaway" | "both" only if explicitly stated,
+        "priceRange": "" or "$" | "$$" | "$$$" | "$$$$" only if explicitly indicated,
+        "cuisine": [] or ["exact cuisines mentioned"]
+      },
+      "confidence": number between 0-100 based on how explicitly and completely the information was provided (high only if all key details are clear and direct),
+      "missingFields": ["name", "address", etc.] - list essential fields not yet extracted from entire conversation,
+      "suggestions": [] or array of 1-2 helpful, non-repetitive suggestions based on history
+    }
+    
+    Be precise: No fabrication. If unsure, set confidence low and note in missingFields.`;
 
       const result = await model.generateContent(prompt);
       const response = await result.response;
@@ -87,7 +89,8 @@ Only include fields in "extracted" that are explicitly mentioned. Set confidence
   }
 
   static async generateFollowUpQuestion(
-    extractedInfo: Partial<LocationSubmission>
+    extractedInfo: Partial<LocationSubmission>,
+    conversationHistory: ConversationMessage[] = []
   ): Promise<string> {
     // Simple fallback when AI is not available
     if (!genAI) {
@@ -115,20 +118,24 @@ Only include fields in "extracted" that are explicitly mentioned. Set confidence
     try {
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-      const prompt = `You are helping collect information about an Amala restaurant. 
+      const essentialKeys = ['name', 'address', 'phone', 'serviceType', 'priceRange', 'website', 'description', 'cuisine'] as const;
+      const missingEssentials = essentialKeys.filter(key => !(key in extractedInfo) || !extractedInfo[key]);
+
+      const prompt = `You are a helpful, engaging AI assistant like ChatGPT, collecting information about an Amala restaurant. Use the conversation history to avoid repeating questions about already provided or asked information. Be friendly, natural, and varied in your phrasing - don't use the same question structure repeatedly.
       
-Current information collected: ${JSON.stringify(extractedInfo, null, 2)}
-
-Generate a natural, friendly follow-up question to gather missing important information like:
-- Restaurant name
-- Address/location
-- Phone number
-- Operating hours
-- Service type (dine-in, takeaway, or both)
-- Price range
-- Special dishes or features
-
-Return only the question, be conversational and specific. If all essential info is collected, ask about optional details.`;
+Current extracted information: ${JSON.stringify(extractedInfo, null, 2)}
+      
+Conversation history: ${conversationHistory.map((msg: ConversationMessage) => `${msg.role}: ${msg.content}`).join("\n") || "No prior history"}
+      
+Essential missing fields (prioritize these if not yet addressed): ${missingEssentials.join(", ") || "None"}
+      
+Generate ONE natural, engaging follow-up question:
+- If essential info is missing and not previously asked, ask specifically about the most important one (e.g., name or address first).
+- Avoid repetitions: Reference history if relevant (e.g., "You mentioned the name, but could you clarify the address?").
+- If all essentials are collected, ask about optional details like hours, specialties, or photos in a conversational way.
+- Make it engaging: Use varied language, emojis sparingly if natural, and sound enthusiastic about Amala spots.
+      
+Return ONLY the single question as plain text, no JSON or explanations. Keep it concise (1-2 sentences).`;
 
       const result = await model.generateContent(prompt);
       const response = await result.response;

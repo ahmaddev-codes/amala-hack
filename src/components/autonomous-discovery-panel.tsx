@@ -40,7 +40,14 @@ export function AutonomousDiscoveryPanel({
     setDiscoveryPhase("Initializing autonomous discovery...");
 
     try {
-      // Simulate discovery phases for better UX
+      const responsePromise = fetch("/api/discovery", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      // Simulate real-time progress during API execution
       const phases = [
         "🔍 Searching Google Places API...",
         "🕷️ Web scraping food blogs and directories...",
@@ -51,16 +58,12 @@ export function AutonomousDiscoveryPanel({
 
       for (let i = 0; i < phases.length; i++) {
         setDiscoveryPhase(phases[i]);
-        await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate processing time
+        await new Promise((resolve) =>
+          setTimeout(resolve, 4000 + Math.random() * 3000)
+        );
       }
 
-      const response = await fetch("/api/discovery", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
+      const response = await responsePromise;
       const result = await response.json();
 
       if (result.success) {
@@ -83,7 +86,7 @@ export function AutonomousDiscoveryPanel({
     <Card className="w-full max-w-2xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Bot className="h-5 w-5 text-blue-600" />
+          <Bot className="h-5 w-5 text-primary" />
           Autonomous Discovery System
         </CardTitle>
         <p className="text-sm text-gray-600">
@@ -95,50 +98,46 @@ export function AutonomousDiscoveryPanel({
       <CardContent className="space-y-4">
         {/* Discovery Sources */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg">
-            <Search className="h-4 w-4 text-blue-600" />
-            <div>
-              <div className="font-medium text-sm">API Sources</div>
-              <div className="text-xs text-gray-600">
-                Google Places, Foursquare
-              </div>
+          <div className="flex items-center md:flex-col gap-2 p-3 bg-primary/5 rounded-lg">
+            <Search className="h-4 w-4 text-primary" />
+            <div className="text-center">
+              <p className="font-medium text-sm">API Sources</p>
+              <p className="text-xs text-gray-600">Google Places, Foursquare</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg">
+          <div className="flex items-center gap-2 md:flex-col p-3 bg-green-50 rounded-lg">
             <Globe className="h-4 w-4 text-green-600" />
-            <div>
-              <div className="font-medium text-sm">Web Scraping</div>
-              <div className="text-xs text-gray-600">
-                Food blogs, directories
-              </div>
+            <div className="text-center">
+              <p className="font-medium text-sm">Web Scraping</p>
+              <p className="text-xs text-gray-600">Food blogs, directories</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 p-3 bg-purple-50 rounded-lg">
+          <div className="flex items-center md:flex-col gap-2 p-3 bg-purple-50 rounded-lg">
             <Zap className="h-4 w-4 text-purple-600" />
-            <div>
-              <div className="font-medium text-sm">Social Media</div>
-              <div className="text-xs text-gray-600">
+            <div className="text-center">
+              <p className="font-medium text-sm">Social Media</p>
+              <p className="text-xs text-gray-600">
                 Instagram, Twitter, TikTok
-              </div>
+              </p>
             </div>
           </div>
         </div>
 
         {/* Discovery Status */}
         {isDiscovering && (
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
-              <Clock className="h-4 w-4 text-blue-600 animate-spin" />
-              <span className="font-medium text-blue-900">
+              <Clock className="h-4 w-4 text-primary animate-spin" />
+              <span className="font-medium text-primary">
                 Discovery in Progress
               </span>
             </div>
-            <p className="text-sm text-blue-700">{discoveryPhase}</p>
-            <div className="mt-2 w-full bg-blue-200 rounded-full h-2">
+            <p className="text-sm text-primary">{discoveryPhase}</p>
+            <div className="mt-2 w-full bg-primary/20 rounded-full h-2">
               <div
-                className="bg-blue-600 h-2 rounded-full animate-pulse"
+                className="bg-primary h-2 rounded-full animate-pulse"
                 style={{ width: "60%" }}
               ></div>
             </div>
@@ -156,23 +155,23 @@ export function AutonomousDiscoveryPanel({
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-              <div>
-                <div className="font-medium text-gray-900">
+              <div className="text-center">
+                <p className="font-medium text-gray-900">
                   {discoveryResult.totalDiscovered}
-                </div>
-                <div className="text-gray-600">Total Discovered</div>
+                </p>
+                <p className="text-gray-600">Total Discovered</p>
               </div>
-              <div>
-                <div className="font-medium text-green-600">
+              <div className="text-center">
+                <p className="font-medium text-green-600">
                   {discoveryResult.savedToDatabase}
-                </div>
-                <div className="text-gray-600">Added to Queue</div>
+                </p>
+                <p className="text-gray-600">Added to Queue</p>
               </div>
-              <div>
-                <div className="font-medium text-yellow-600">
+              <div className="text-center">
+                <p className="font-medium text-yellow-600">
                   {discoveryResult.skippedDuplicates}
-                </div>
-                <div className="text-gray-600">Duplicates Skipped</div>
+                </p>
+                <p className="text-gray-600">Duplicates Skipped</p>
               </div>
             </div>
 

@@ -1,5 +1,6 @@
-import { AmalaLocation } from "@/types/location";
+import { AmalaLocation, Review } from "@/types/location";
 import axios from "axios";
+import { WebScrapingService } from "./scraping-service";
 
 export interface DiscoverySource {
   name: string;
@@ -113,6 +114,26 @@ export class AutonomousDiscoveryService {
   /**
    * Discover locations using Google Places API and other APIs
    */
+  private static async fetchPlaceDetails(placeId: string, apiKey: string): Promise<any> {
+    try {
+      const fields = "name,formatted_address,geometry,photos,reviews,rating,user_ratings_total,opening_hours,price_level,website,formatted_phone_number";
+      const response = await axios.get(
+        `https://maps.googleapis.com/maps/api/place/details/json`,
+        {
+          params: {
+            place_id: placeId,
+            fields,
+            key: apiKey,
+          },
+        }
+      );
+      return response.data.result;
+    } catch (error) {
+      console.error(`Failed to fetch details for place ${placeId}:`, error);
+      return null;
+    }
+  }
+
   static async discoverFromAPIs(): Promise<Partial<AmalaLocation>[]> {
     const locations: Partial<AmalaLocation>[] = [];
 
@@ -136,27 +157,54 @@ export class AutonomousDiscoveryService {
             );
 
             if (response.data.results) {
-              for (const place of response.data.results.slice(0, 10)) {
-                // Limit to 10 per query
+              for (const place of response.data.results.slice(0, 5)) { // Reduced to 5 per query to limit API calls
+                const details = await this.fetchPlaceDetails(place.place_id, googleApiKey);
+                if (!details) continue;
+
+                // Map photos to image URLs
+                const images = details.photos ? details.photos.map((photo: any) =>
+                  `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photo.photo_reference}&key=${googleApiKey}`
+                ) : [];
+
+                // Map reviews (up to 5)
+                const reviews: Review[] = details.reviews ? details.reviews.slice(0, 5).map((r: any) => ({
+                  id: crypto.randomUUID(),
+                  location_id: '', // Will be set later
+                  author: r.author_name,
+                  rating: r.rating,
+                  text: r.text,
+                  date_posted: new Date(r.time * 1000),
+                  status: 'approved' as const,
+                })) : [];
+
                 locations.push({
-                  name: place.name,
-                  address: place.formatted_address,
+                  name: details.name,
+                  address: details.formatted_address,
                   coordinates: {
-                    lat: place.geometry.location.lat,
-                    lng: place.geometry.location.lng,
+                    lat: details.geometry.location.lat,
+                    lng: details.geometry.location.lng,
                   },
-                  rating: place.rating,
-                  priceRange: this.mapPriceLevel(place.price_level),
-                  isOpenNow: place.opening_hours?.open_now ?? false,
-                  discoverySource: "directory", // Use allowed value instead of google-places-api
+                  phone: details.formatted_phone_number,
+                  website: details.website,
+                  rating: details.rating,
+                  reviewCount: details.user_ratings_total,
+                  images,
+                  reviews,
+                  priceRange: this.mapPriceLevel(details.price_level),
+                  isOpenNow: details.opening_hours?.open_now ?? false,
+                  discoverySource: "directory",
                   sourceUrl: `https://maps.google.com/place/${place.place_id}`,
                 });
               }
             }
-          } catch (error) {}
+          } catch (error) {
+            console.error(`Error in textsearch for query "${query}":`, error);
+          }
         }
       }
-    } catch (error) {}
+    } catch (error) {
+      console.error("Error in discoverFromAPIs:", error);
+    }
 
     return locations;
   }
@@ -165,8 +213,11 @@ export class AutonomousDiscoveryService {
    * Discover locations through web scraping
    */
   static async discoverFromWebScraping(): Promise<Partial<AmalaLocation>[]> {
-    // Return fallback discoveries instead of attempting problematic web scraping
-    return this.getSimulatedWebDiscoveries();
+    const scraped = await WebScrapingService.discoverLocations();
+    return scraped.map(loc => ({
+      ...loc,
+      discoverySource: 'web-scraping',
+    })) as Partial<AmalaLocation>[];
   }
 
   /**
@@ -364,7 +415,8 @@ export class AutonomousDiscoveryService {
       dietary: location.dietary || [],
       features: location.features || [],
       rating: location.rating,
-      reviewCount: location.reviewCount,
+      reviewCount: location.reviewCount || (location.reviews ? location.reviews.length : 0),
+      reviews: location.reviews || [],
       hours: location.hours || this.generateDefaultHours(),
       images: location.images || [],
       status: "pending",
@@ -410,13 +462,13 @@ export class AutonomousDiscoveryService {
     }
   }
 
-  private static calculateSimilarity(str1: string, str2: string): number {
+  public static calculateSimilarity(str1: string, str2: string): number {
     const longer = str1.length > str2.length ? str1 : str2;
     const shorter = str1.length > str2.length ? str2 : str1;
 
     if (longer.length === 0) return 1.0;
 
-    const editDistance = this.levenshteinDistance(longer, shorter);
+    const editDistance = AutonomousDiscoveryService.levenshteinDistance(longer, shorter);
     return (longer.length - editDistance) / longer.length;
   }
 
@@ -463,36 +515,7 @@ export class AutonomousDiscoveryService {
   /**
    * Fallback simulated discoveries for demo purposes
    */
-  private static getSimulatedWebDiscoveries(): Partial<AmalaLocation>[] {
-    return [
-      {
-        name: "Buka Palace Amala Joint",
-        address: "12 Ogba Road, Ikeja, Lagos, Nigeria",
-        coordinates: { lat: 6.6093, lng: 3.3439 },
-        description: "Traditional Amala spot discovered through web scraping",
-        discoverySource: "web-scraping",
-        sourceUrl: "https://pulse.ng/lifestyle/food",
-        isOpenNow: true,
-        serviceType: "both",
-        priceRange: "$",
-        cuisine: ["Nigerian", "Traditional"],
-        rating: 4.2,
-      },
-      {
-        name: "Lagoon Amala House",
-        address: "67 Ikorodu Road, Onipanu, Lagos, Nigeria",
-        coordinates: { lat: 6.5456, lng: 3.3812 },
-        description: "Popular Amala restaurant found in food blogs",
-        discoverySource: "web-scraping",
-        sourceUrl: "https://guardian.ng/food-reviews",
-        isOpenNow: true,
-        serviceType: "both",
-        priceRange: "$",
-        cuisine: ["Nigerian", "Yoruba"],
-        rating: 4.5,
-      },
-    ];
-  }
+  // Remove simulated method as it's no longer needed with real scraping
 
   /**
    * Schedule autonomous discovery to run periodically

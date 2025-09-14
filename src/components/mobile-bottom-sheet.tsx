@@ -169,7 +169,7 @@ export function MobileBottomSheet({
       {/* Backdrop for expanded state */}
       {sheetState === "expanded" && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-25 z-40"
+          className="fixed inset-0 z-40 bg-white bg-opacity-60 backdrop-blur-sm transition-all duration-300"
           onClick={() => setSheetState("peek")}
         />
       )}
@@ -211,7 +211,7 @@ export function MobileBottomSheet({
                 {!selectedLocation && (
                   <>
                     <span className="text-gray-400">•</span>
-                    <p className="text-sm text-blue-600">Tap to explore</p>
+                    <p className="text-sm text-primary">Tap to explore</p>
                   </>
                 )}
               </div>
@@ -250,7 +250,13 @@ export function MobileBottomSheet({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-hidden">
+        <div
+          className={
+            sheetState === "expanded"
+              ? "flex-1 h-full overflow-y-auto"
+              : "flex-1 overflow-hidden"
+          }
+        >
           {sheetState === "peek" && (
             <div className="p-4 space-y-3">
               {selectedLocation ? (
@@ -307,7 +313,7 @@ export function MobileBottomSheet({
                       .map((cuisine, index) => (
                         <span
                           key={index}
-                          className="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded-full"
+                          className="px-2 py-1 bg-primary/5 text-primary text-xs rounded-full"
                         >
                           {cuisine}
                         </span>
@@ -316,7 +322,7 @@ export function MobileBottomSheet({
 
                   {/* Quick Actions */}
                   <div className="flex items-center gap-2 pt-2">
-                    <button className="flex-1 bg-blue-600 text-white py-2 px-3 rounded-lg text-sm font-medium flex items-center justify-center gap-2">
+                    <button className="flex-1 bg-primary text-white py-2 px-3 rounded-lg text-sm font-medium flex items-center justify-center gap-2">
                       <Navigation className="w-4 h-4" />
                       Directions
                     </button>
@@ -425,8 +431,8 @@ export function MobileBottomSheet({
                               {location.isOpenNow ? "Open Now" : "Closed"}
                             </span>
                             <div className="flex items-center gap-1">
-                              <Navigation className="w-3 h-3 text-blue-600" />
-                              <span className="text-xs text-blue-600">
+                              <Navigation className="w-3 h-3 text-primary" />
+                              <span className="text-xs text-primary">
                                 Directions
                               </span>
                             </div>
