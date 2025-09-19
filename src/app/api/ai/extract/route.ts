@@ -1,8 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AILocationService } from "@/lib/services/ai-service";
+import { EnhancedAILocationService } from "@/lib/services/ai-service";
+import { rateLimit } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      request.headers.get("x-real-ip") ||
+      "unknown";
+    const rl = rateLimit(`ai:extract:${ip}`, 20, 60_000);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { success: false, error: "Rate limit exceeded. Try again later." },
+        { status: 429 }
+      );
+    }
     const { message, conversationHistory } = await request.json();
 
     if (!message) {
@@ -12,24 +24,39 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extract location information using AI
-    const extraction = await AILocationService.extractLocationInfo(
+    // Extract location information using Enhanced AI
+    const extraction = await EnhancedAILocationService.extractLocationInfo(
       message,
       conversationHistory || []
     );
 
     // Generate follow-up question if needed
-    const followUp = await AILocationService.generateFollowUpQuestion(
+    let followUp = await EnhancedAILocationService.generateFollowUpQuestion(
       extraction.extracted,
       conversationHistory
     );
+
+    // Override for special agentic actions
+    if (
+      extraction.nextAction === "askClarify" ||
+      extraction.nextAction === "askChoice"
+    ) {
+      followUp = extraction.suggestions[0] || followUp;
+    }
+
+    const isComplete =
+      extraction.missingFields.length === 0 &&
+      extraction.nextAction !== "askClarify" &&
+      extraction.nextAction !== "askChoice" &&
+      extraction.nextAction !== "performWebSearch" &&
+      extraction.nextAction !== "askUserForData";
 
     return NextResponse.json({
       success: true,
       data: {
         extraction,
         followUpQuestion: followUp,
-        isComplete: extraction.missingFields.length === 0,
+        isComplete,
       },
     });
   } catch (error) {
@@ -62,7 +89,7 @@ export async function PUT(request: NextRequest) {
     const { location, existingLocations } = await request.json();
 
     // Check for duplicates
-    const duplicateCheck = await AILocationService.detectDuplicate(
+    const duplicateCheck = await EnhancedAILocationService.detectDuplicate(
       location,
       existingLocations || []
     );
