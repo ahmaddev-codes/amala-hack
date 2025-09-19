@@ -2,6 +2,8 @@ export interface AmalaLocation {
   id: string;
   name: string;
   address: string;
+  city?: string; // Added for global location context
+  country?: string; // Added for global location context
   coordinates: {
     lat: number;
     lng: number;
@@ -14,12 +16,16 @@ export interface AmalaLocation {
   // Core filters
   isOpenNow: boolean;
   serviceType: "dine-in" | "takeaway" | "both";
-  priceRange: "$" | "$$" | "$$$" | "$$$$";
-  priceInfo?: string; // Real price details e.g. "₦1000-3000 per person"
+  priceMin?: number; // Price in smallest currency unit (cents, kobo, pence)
+  priceMax?: number; // Price in smallest currency unit
+  currency?: string; // Currency code (NGN, USD, GBP, CAD)
+  priceInfo?: string; // Human readable price e.g. "₦1,500-3,000 per person"
+  priceLevel?: number; // Google Places price_level (0-4)
 
   // Additional metadata
   cuisine: string[];
   dietary: ("vegan" | "vegetarian" | "gluten-free" | "halal" | "kosher")[];
+  specialFeatures?: string[]; // Added for highlights/amenities
   features: (
     | "wheelchair-accessible"
     | "parking"
@@ -62,14 +68,19 @@ export interface AmalaLocation {
     | "google-places-api"
     | "autonomous-discovery";
   sourceUrl?: string;
+  priceRange?: string; // Price range like "$", "$$", "$$$", "$$$$"
+  enrichedAt?: string;
+  enrichmentSource?: string;
 }
 
 export interface Review {
   id: string;
   location_id: string;
   author: string;
+  user_id?: string;
   rating: number; // 1-5
   text?: string;
+  photos?: string[];
   date_posted: Date;
   status: "pending" | "approved" | "rejected";
 }
@@ -88,7 +99,7 @@ export interface LocationFilter {
     east: number;
     west: number;
   };
-  sortBy?: 'name_asc' | 'name_desc' | 'default';
+  sortBy?: "name_asc" | "name_desc" | "default";
 }
 
 export interface LocationSubmission {
@@ -98,9 +109,14 @@ export interface LocationSubmission {
   website?: string;
   description?: string;
   serviceType: "dine-in" | "takeaway" | "both";
-  priceRange: "$" | "$$" | "$$$" | "$$$$";
-  priceInfo?: string;
+  priceMin?: number; // Price in smallest currency unit (cents, kobo, pence)
+  priceMax?: number; // Price in smallest currency unit
+  currency?: string; // Currency code (NGN, USD, GBP, CAD)
+  priceInfo?: string; // Human readable price e.g. "₦1,500-3,000 per person"
+  priceLevel?: number; // Google Places price_level (0-4)
   cuisine: string[];
+  city?: string; // Added for global location context
+  country?: string; // Added for global location context
   submitterInfo?: {
     name?: string;
     email?: string;

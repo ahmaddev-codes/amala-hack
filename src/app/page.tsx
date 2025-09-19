@@ -1,14 +1,25 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
+import {
+  ArrowBack as ArrowLeft,
+  LocationOn as MapPin,
+  Star,
+  AttachMoney as DollarSign,
+  Phone,
+  Language as Globe,
+} from "@mui/icons-material";
 import { MapContainer } from "@/components/map-container";
-import { FilterSidebar } from "@/components/filter-sidebar";
 import { Header } from "@/components/header";
-import { LocationList } from "@/components/location-list";
+import { MapUserProfile } from "@/components/map-user-profile";
 import { AgenticIntake } from "@/components/agentic-intake";
 import { ModerationPanel } from "@/components/moderation-panel";
-import { MobileBottomSheet } from "@/components/mobile-bottom-sheet";
-import { dbOperations } from "@/lib/database/supabase";
+import { CentralFilters } from "@/components/central-filters";
+import { GoogleMapsLocationDetail } from "@/components/google-maps-location-detail";
+import { useToast } from "@/contexts/ToastContext";
+import { formatPriceRange } from "@/lib/currency-utils";
+import { firebaseOperations } from "@/lib/firebase/database";
 import { LocationService } from "@/lib/services/location-service";
 import {
   AmalaLocation,
@@ -16,8 +27,23 @@ import {
   LocationSubmission,
 } from "@/types/location";
 
+// Helper function for restaurant image placeholders
+const getRestaurantPlaceholder = (locationName: string, index: number) => {
+  const placeholderColors = [
+    "bg-gradient-to-br from-orange-400 to-red-500",
+    "bg-gradient-to-br from-green-400 to-blue-500",
+    "bg-gradient-to-br from-purple-400 to-pink-500",
+    "bg-gradient-to-br from-yellow-400 to-orange-500",
+    "bg-gradient-to-br from-blue-400 to-indigo-500",
+  ];
+
+  const colorIndex = (locationName.length + index) % placeholderColors.length;
+  return placeholderColors[colorIndex];
+};
+
 export default function Home() {
-  const [locations, setLocations] = useState<AmalaLocation[]>([]);
+  const { success, info, error } = useToast();
+  const [allLocations, setAllLocations] = useState<AmalaLocation[]>([]);
   const [filteredLocations, setFilteredLocations] = useState<AmalaLocation[]>(
     []
   );
@@ -25,149 +51,87 @@ export default function Home() {
   const [filters, setFilters] = useState<LocationFilter>({});
   const [selectedLocation, setSelectedLocation] =
     useState<AmalaLocation | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showIntakeDialog, setShowIntakeDialog] = useState(false);
   const [showModerationPanel, setShowModerationPanel] = useState(false);
   const [searchResults, setSearchResults] = useState<AmalaLocation[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-    async function refreshApprovedLocations() {
-      try {
-        console.log("🔄 Refreshing approved locations...");
-        const allLocations = await dbOperations.getAllLocations({});
-        const approvedLocations = allLocations.filter((loc) => loc.status === "approved");
-        setLocations(approvedLocations);
-        console.log(`✅ Refreshed ${approvedLocations.length} approved locations`);
-      } catch (error) {
-        console.error("❌ Error refreshing approved locations:", error);
-      }
-    }
-  
-    // Search functionality
+  // Search functionality
   const handleSearch = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([]);
       return;
     }
-
-    // Search through current locations
-    const results = locations.filter(
+    const results = allLocations.filter(
       (location) =>
         location.name.toLowerCase().includes(query.toLowerCase()) ||
         location.address.toLowerCase().includes(query.toLowerCase()) ||
         location.description?.toLowerCase().includes(query.toLowerCase())
     );
-
     setSearchResults(results);
   };
 
   const handleSearchResultSelect = (locationId: string) => {
-    const location = locations.find((loc) => loc.id === locationId);
+    const location = allLocations.find((loc) => loc.id === locationId);
     if (location) {
       setSelectedLocation(location);
     }
   };
 
-  // Load locations - connect to database
+  // Load locations from database
   useEffect(() => {
     const loadLocations = async () => {
       try {
         setIsLoadingLocations(true);
-
-        // Load locations from database
-        console.log("📍 Loading all Amala locations from database...");
-        console.log(
-          "🔗 Supabase URL:",
-          process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 30) + "..."
-        );
-
-        const allLocations = await dbOperations.getAllLocations({});
-        const loadedLocations = allLocations.filter(
+        const locationsFromDb = await firebaseOperations.getAllLocations({});
+        const loadedLocations = locationsFromDb.filter(
           (loc) => loc.status === "approved"
         );
-
-        console.log(
-          `✅ Loaded ${loadedLocations.length} approved locations from Supabase`
-        );
-
-        const locationsToUse = loadedLocations;
-
-        console.log(
-          "📋 First location:",
-          loadedLocations[0]?.name || "No locations"
-        );
-
-        setLocations(locationsToUse);
-        setFilteredLocations(locationsToUse);
-        
-        // Load pending count on page load
-        const pending = await dbOperations.getLocationsByStatus("pending");
+        setAllLocations(loadedLocations);
+        setFilteredLocations(loadedLocations);
+        const pending = await firebaseOperations.getLocationsByStatus("pending");
         setPendingCount(pending.length);
       } catch (error) {
-        console.error("❌ Error loading locations from database:", error);
-        console.error(
-          "💡 Check your Supabase configuration and database setup"
-        );
+        console.error("Error loading locations:", error);
       } finally {
         setIsLoadingLocations(false);
       }
     };
-
     loadLocations();
   }, []);
 
-  // Filter locations when filters change - server-side
+  // Filter locations when filters change
   useEffect(() => {
-    const fetchFiltered = async () => {
-      if (Object.keys(filters).length === 0) {
-        setFilteredLocations(locations);
-        return;
-      }
-      try {
-        console.log("🔍 Applying server-side filters:", filters);
-        const allFiltered = await dbOperations.getAllLocations(filters);
-        console.log("✅ Fetched all filtered locations:", allFiltered.length);
-        const filtered = allFiltered.filter((loc) => loc.status === "approved");
-        setFilteredLocations(filtered);
-      } catch (error) {
-        console.error("Error fetching filtered locations:", error);
-      }
-    };
-
-    fetchFiltered();
-  }, [filters, locations]);
-
-  const handleFilterChange = (newFilters: Partial<LocationFilter>) => {
-    // If it's a clear operation (empty object), reset all filters
-    if (Object.keys(newFilters).length === 0) {
-      setFilters({});
-    } else {
-      setFilters((prev) => ({ ...prev, ...newFilters }));
+    if (Object.keys(filters).length === 0) {
+      setFilteredLocations(allLocations);
+      return;
     }
-  };
 
-  const handleLocationSelect = (location: AmalaLocation) => {
-    setSelectedLocation(location);
-  };
+    let filtered = allLocations;
+    if (filters.isOpenNow) {
+      filtered = filtered.filter((loc) => loc.isOpenNow);
+    }
+    if (filters.serviceType && filters.serviceType !== "all") {
+      filtered = filtered.filter(
+        (loc) => loc.serviceType === filters.serviceType
+      );
+    }
+    if (
+      filters.priceRange &&
+      Array.isArray(filters.priceRange) &&
+      filters.priceRange.length > 0
+    ) {
+      // TODO: Implement price filtering with new pricing system
+      // filtered = filtered.filter((loc) =>
+      //   filters.priceRange!.includes(loc.priceRange)
+      // );
+    }
+    setFilteredLocations(filtered);
+  }, [filters, allLocations]);
 
   const handleLocationSubmit = async (submission: LocationSubmission) => {
     try {
-      // Check for duplicates first
-      const duplicateCheck = await LocationService.detectDuplicate(
-        submission,
-        locations
-      );
-
-      if (duplicateCheck.isDuplicate) {
-        const confirmSubmit = window.confirm(
-          `Similar location found: "${duplicateCheck.similarLocations[0].name}". Submit anyway?`
-        );
-        if (!confirmSubmit) return;
-      }
-
-      // Submit to database via API
-      console.log("📝 Submitting location to database:", submission);
-
       const response = await fetch("/api/locations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -181,28 +145,21 @@ export default function Home() {
       });
 
       const result = await response.json();
-
       if (!result.success) {
         throw new Error(result.error);
       }
 
-      console.log("✅ Location submitted successfully:", result.data);
-
-      // Refresh locations to include the new pending location
-      const allLocations = await dbOperations.getAllLocations({});
-      const approvedLocations = allLocations.filter(
+      const locationsFromDb = await firebaseOperations.getAllLocations({});
+      const approvedLocations = locationsFromDb.filter(
         (loc) => loc.status === "approved"
       );
-      setLocations(approvedLocations);
+      setAllLocations(approvedLocations);
       setFilteredLocations(approvedLocations);
-
       setShowIntakeDialog(false);
-
-      // Show success message
-      alert(`Location "${submission.name}" submitted for moderation!`);
-    } catch (error) {
-      console.error("Error submitting location:", error);
-      alert("Error submitting location. Please try again.");
+      success(`Location "${submission.name}" submitted for moderation!`, "Submission Successful");
+    } catch (err) {
+      console.error("Error submitting location:", err);
+      error("Error submitting location. Please try again.", "Submission Failed");
     }
   };
 
@@ -211,21 +168,16 @@ export default function Home() {
     verificationNotes?: string
   ) => {
     try {
-      console.log("🟢 Page: Approving location in database:", locationId);
-
-      // Update the database first
-      await dbOperations.updateLocationStatus(locationId, "approved");
-      console.log("✅ Page: Database updated successfully");
-      
-      // Refresh the approved locations list to include the new one
-      await refreshApprovedLocations();
-    } catch (error) {
-      console.error("❌ Page: Error approving location:", error);
-      alert(
-        `Error approving location: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
+      await firebaseOperations.updateLocationStatus(locationId, "approved");
+      const locationsFromDb = await firebaseOperations.getAllLocations({});
+      const approvedLocations = locationsFromDb.filter(
+        (loc) => loc.status === "approved"
       );
+      setAllLocations(approvedLocations);
+      success("Location approved successfully!", "Approval Complete");
+    } catch (err) {
+      console.error("Error approving location:", err);
+      error("Error approving location", "Approval Failed");
     }
   };
 
@@ -235,18 +187,11 @@ export default function Home() {
     notes?: string
   ) => {
     try {
-      console.log("🔴 Page: Rejecting location in database:", locationId);
-
-      // Update the database first
-      await dbOperations.updateLocationStatus(locationId, "rejected");
-      console.log("✅ Page: Database updated successfully");
-    } catch (error) {
-      console.error("❌ Page: Error rejecting location:", error);
-      alert(
-        `Error rejecting location: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
+      await firebaseOperations.updateLocationStatus(locationId, "rejected");
+      info("Location rejected", "Rejection Complete");
+    } catch (err) {
+      console.error("Error rejecting location:", err);
+      error("Error rejecting location", "Rejection Failed");
     }
   };
 
@@ -263,97 +208,289 @@ export default function Home() {
     }
   };
 
-  const pendingLocations = locations.filter(
-    (location) => location.status === "pending"
-  );
-
-  // Show loading state while locations are being fetched
   if (isLoadingLocations) {
     return (
-      <div className="h-screen flex flex-col">
-        <Header
-          onAddLocation={() => setShowIntakeDialog(true)}
-          onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-          onShowModeration={() => setShowModerationPanel(true)}
-          pendingCount={0}
-          onSearch={() => {}}
-          searchResults={[]}
-          onSearchResultSelect={() => {}}
-        />
-        <div className="flex-1 flex items-center justify-center bg-gray-50">
-          <div className="text-center">
-            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Loading Amala Locations
-            </h3>
-            <p className="text-gray-600">
-              Fetching the best Amala spots for you...
-            </p>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"></div>
+          <p className="mt-4 text-gray-600">
+            Loading delicious Amala locations...
+          </p>
         </div>
       </div>
     );
   }
-
   return (
-    <div className="relative w-screen h-screen overflow-hidden">
-      {/* Map as absolute background */}
-      <div className="fixed inset-0 w-screen h-screen z-0">
+    <div className="h-screen w-full bg-gray-100 overflow-hidden flex">
+      {/* Google Maps Style Sidebar with Sliding Animation - absolutely positioned */}
+      <div
+        className={`fixed top-0 left-0 h-full w-[408px] bg-white shadow-lg z-30 transition-transform duration-300 ease-in-out xl:block hidden ${
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        {/* Triangle Toggle Button - Always visible on the right edge */}
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="absolute -right-6 top-1/2 transform -translate-y-1/2 bg-white shadow-lg rounded-r-lg p-2 z-40 hover:bg-gray-50 transition-colors border border-l-0 border-gray-200"
+        >
+          <div
+            className={`w-0 h-0 transition-transform duration-200 ${
+              isSidebarOpen
+                ? "border-r-[8px] border-r-gray-600 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent"
+                : "border-l-[8px] border-l-gray-600 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent"
+            }`}
+          />
+        </button>
+
+        <div className="flex flex-col h-full">
+          {/* Compact Header - fits within sidebar */}
+          <div className="p-4 border-b border-gray-100">
+            <Header
+              onAddLocation={() => setShowIntakeDialog(true)}
+              onSearch={handleSearch}
+              searchResults={searchResults.map((loc) => ({
+                id: loc.id,
+                name: loc.name,
+                address: loc.address,
+                isOpenNow: loc.isOpenNow,
+              }))}
+              onSearchResultSelect={handleSearchResultSelect}
+            />
+          </div>
+
+          {/* Results Header */}
+          <div className="bg-white px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-lg font-medium text-gray-900">Results</h1>
+                <p className="text-sm text-gray-600">
+                  {filteredLocations.length}{" "}
+                  {filteredLocations.length === 1 ? "result" : "results"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Scrollable Content Area - Location List View */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="divide-y divide-gray-100">
+              {filteredLocations.map((location, idx) => (
+                <div
+                  key={location.id ?? `location-${idx}`}
+                  className="p-4 cursor-pointer transition-all duration-200 hover:bg-gray-50"
+                  onClick={() => setSelectedLocation(location)}
+                >
+                  <div className="flex gap-3">
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <h3 className="font-medium text-gray-900 text-base leading-tight">
+                        {location.name}
+                      </h3>
+
+                      <div className="flex items-center gap-2 text-sm">
+                        <div className="flex items-center gap-1">
+                          <span className="font-medium text-gray-900">
+                            {location.rating?.toFixed(1) || "4.0"}
+                          </span>
+                          <div className="flex items-center gap-0.5">
+                            {[...Array(5)].map((_, i) => (
+                              <Star
+                                key={i}
+                                className={`w-3 h-3 ${
+                                  i < Math.floor(location.rating || 4)
+                                    ? "text-yellow-400"
+                                    : i < (location.rating || 4)
+                                    ? "text-yellow-300"
+                                    : "text-gray-300"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-gray-500">
+                            ({location.reviewCount || "128"})
+                          </span>
+                        </div>
+                        <span className="text-gray-400">·</span>
+                        <span className="text-gray-600">
+                          {location.priceInfo || "Pricing available"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 text-sm text-gray-600">
+                        <span>Restaurant</span>
+                        <span className="text-gray-400">·</span>
+                        <span className="truncate">{location.address}</span>
+                      </div>
+
+                      <div className="text-sm text-gray-600 leading-tight">
+                        {location.description ||
+                          "Authentic Nigerian cuisine & West African specialties"}
+                      </div>
+
+                      <div className="flex items-center gap-1 text-sm">
+                        <span
+                          className={`font-medium ${
+                            location.isOpenNow
+                              ? "text-green-700"
+                              : "text-red-700"
+                          }`}
+                        >
+                          {location.isOpenNow ? "Open" : "Closed"}
+                        </span>
+                        {!location.isOpenNow && (
+                          <>
+                            <span className="text-gray-400">⋅</span>
+                            <span className="text-gray-600">Opens 10 am</span>
+                          </>
+                        )}
+                      </div>
+
+                      {location.reviews && location.reviews.length > 0 && (
+                        <div className="flex items-start gap-2 text-sm pt-2 border-t border-gray-100">
+                          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex-shrink-0 mt-0.5"></div>
+                          <div className="text-gray-600 italic leading-tight">
+                            &quot;{location.reviews[0].text}&quot;
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-gray-100">
+                      <Image
+                        src={
+                          location.images && location.images.length > 0
+                            ? location.images[0]
+                            : "/placeholder-image.svg"
+                        }
+                        alt={location.name}
+                        width={80}
+                        height={80}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          console.log("Location image failed to load:", e.currentTarget.src);
+                          e.currentTarget.src = "/placeholder-image.svg";
+                        }}
+                        unoptimized
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {filteredLocations.length === 0 && (
+                <div className="text-center py-12 px-4">
+                  <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-600 font-medium">
+                    No locations found
+                  </p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Try adjusting your filters
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Info Panel - Floating card beside sidebar, adjusts position based on sidebar state */}
+      <div
+        className={`absolute top-24 bottom-4 w-96 z-20 transform transition-all duration-300 ease-out ${
+          isSidebarOpen ? "left-[420px]" : "left-8"
+        } ${
+          selectedLocation
+            ? "translate-x-0 opacity-100"
+            : "-translate-x-8 opacity-0 pointer-events-none"
+        }`}
+      >
+        <div className="h-full p-4">
+          <div className="h-full bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden transform transition-all duration-200 hover:shadow-3xl">
+            {selectedLocation && (
+              <GoogleMapsLocationDetail
+                location={selectedLocation}
+                onClose={() => setSelectedLocation(null)}
+                onDirections={() => {
+                  const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedLocation.coordinates.lat},${selectedLocation.coordinates.lng}`;
+                  window.open(url, "_blank");
+                  info("Opening Google Maps for directions", "Navigation");
+                }}
+                onCall={() => {
+                  if (selectedLocation.phone) {
+                    window.open(`tel:${selectedLocation.phone}`, "_self");
+                    info(`Calling ${selectedLocation.name}`, "Phone Call");
+                  } else {
+                    info("Phone number not available", "Call");
+                  }
+                }}
+                onShare={() => {
+                  if (navigator.share) {
+                    navigator.share({
+                      title: selectedLocation.name,
+                      text: `Check out ${selectedLocation.name} - ${selectedLocation.address}`,
+                      url: window.location.href,
+                    });
+                    success("Location shared successfully!", "Shared");
+                  } else {
+                    // Fallback: Copy to clipboard
+                    navigator.clipboard.writeText(window.location.href);
+                    success("Location link copied to clipboard!", "Shared");
+                  }
+                }}
+                onSave={() => {
+                  success(
+                    `${selectedLocation.name} saved to your favorites!`,
+                    "Saved"
+                  );
+                  // TODO: Implement actual save functionality
+                }}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Main Map Container - takes remaining space */}
+      <div className="flex-1 h-full relative">
         <MapContainer
           locations={filteredLocations}
           selectedLocation={selectedLocation}
-          onLocationSelect={setSelectedLocation}
+          onLocationSelect={(loc) => setSelectedLocation(loc)}
+          filters={filters}
         />
       </div>
 
-      {/* Header - always visible */}
-      <Header
-        onAddLocation={() => setShowIntakeDialog(true)}
-        onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
-        onShowModeration={() => setShowModerationPanel(true)}
-        pendingCount={pendingCount}
-        onSearch={handleSearch}
-        searchResults={searchResults.map((loc) => ({
-          id: loc.id,
-          name: loc.name,
-          address: loc.address,
-          isOpenNow: loc.isOpenNow,
-        }))}
-        onSearchResultSelect={handleSearchResultSelect}
-      />
+      {/* Mobile Layout */}
+      <div className="xl:hidden relative z-10">
+        <Header
+          onAddLocation={() => setShowIntakeDialog(true)}
+          onSearch={handleSearch}
+          searchResults={searchResults.map((loc) => ({
+            id: loc.id,
+            name: loc.name,
+            address: loc.address,
+            isOpenNow: loc.isOpenNow,
+          }))}
+          onSearchResultSelect={handleSearchResultSelect}
+        />
+      </div>
 
-      {/* Filter Sidebar */}
-      <FilterSidebar
-        isOpen={isSidebarOpen}
+      {/* Google-style floating filters - positioned at top center */}
+      <CentralFilters
         filters={filters}
-        onFilterChange={handleFilterChange}
-        onClose={() => setIsSidebarOpen(false)}
+        onFilterChange={(newFilters) => {
+          if (Object.keys(newFilters).length === 0) {
+            setFilters({});
+          } else {
+            setFilters((prev) => ({ ...prev, ...newFilters }));
+          }
+        }}
       />
-
-      {/* Desktop Location List */}
-      <div className="hidden xl:block fixed top-0 right-0 h-full w-96 border-l bg-white z-30">
-        <LocationList
-          locations={filteredLocations}
-          selectedLocation={selectedLocation}
-          onLocationSelect={handleLocationSelect}
-        />
-      </div>
-
-      {/* Mobile Bottom Sheet */}
-      <div className="xl:hidden">
-        <MobileBottomSheet
-          locations={filteredLocations}
-          selectedLocation={selectedLocation}
-          onLocationSelect={handleLocationSelect}
-        />
-      </div>
 
       {/* Dialogs */}
       <AgenticIntake
         isOpen={showIntakeDialog}
         onClose={() => setShowIntakeDialog(false)}
         onSubmit={handleLocationSubmit}
-        existingLocations={locations}
+        existingLocations={allLocations}
       />
 
       <ModerationPanel
@@ -364,6 +501,9 @@ export default function Home() {
         onBulkAction={handleBulkAction}
         onPendingCountChange={setPendingCount}
       />
+
+      {/* User Profile - positioned like Google Maps */}
+      <MapUserProfile />
     </div>
   );
 }
