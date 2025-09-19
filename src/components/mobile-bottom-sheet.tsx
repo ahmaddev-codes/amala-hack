@@ -2,18 +2,18 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  ChevronUp,
-  ChevronDown,
-  X,
+  ExpandLess as ChevronUp,
+  ExpandMore as ChevronDown,
+  Close as X,
   Phone,
-  Globe,
+  Language as Globe,
   Star,
-  Clock,
-  MapPin,
+  AccessTime as Clock,
+  LocationOn as MapPin,
   Navigation,
   Share,
-  Heart,
-} from "lucide-react";
+  Favorite as Heart,
+} from "@mui/icons-material";
 import { AmalaLocation } from "@/types/location";
 import { LocationInfoWindow } from "./location-info-window";
 
@@ -273,7 +273,7 @@ export function MobileBottomSheet({
                           4.5 (234 reviews)
                         </span>
                         <span className="text-sm font-medium text-gray-800">
-                          {selectedLocation.priceRange}
+                          {selectedLocation.priceInfo || "Pricing available"}
                         </span>
                       </div>
                     </div>
@@ -393,7 +393,7 @@ export function MobileBottomSheet({
                             <span className="text-xs text-gray-600">4.3</span>
                             <span className="text-xs text-gray-400">•</span>
                             <span className="text-xs font-medium text-gray-800">
-                              {location.priceRange}
+                              {location.priceInfo || "Pricing available"}
                             </span>
                             <span className="text-xs text-gray-400">•</span>
                             <span className="text-xs text-gray-600 capitalize">

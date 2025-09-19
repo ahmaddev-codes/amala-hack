@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, Send, Mic, MicOff } from "lucide-react";
+import { SmartToy as Bot, Send, Mic, MicOff } from "@mui/icons-material";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,8 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { LocationSubmission } from "@/types/location";
+import { EnhancedAILocationService } from "@/lib/services/ai-service";
+import { useToast } from "@/contexts/ToastContext";
 import { DuplicateWarning } from "./duplicate-warning";
 
 interface AgenticIntakeProps {
@@ -35,6 +37,7 @@ export function AgenticIntake({
   onSubmit,
   existingLocations = [],
 }: AgenticIntakeProps) {
+  const { warning } = useToast();
   const [mode, setMode] = useState<"chat" | "form">("chat");
   const [isListening, setIsListening] = useState(false);
   const [chatMessages, setChatMessages] = useState([
@@ -62,7 +65,10 @@ export function AgenticIntake({
     website: "",
     description: "",
     serviceType: "both",
-    priceRange: "$$",
+    priceMin: 150000,
+    priceMax: 400000,
+    currency: "NGN",
+    priceInfo: "₦1,500-4,000 per person",
     cuisine: [],
   });
 
@@ -178,7 +184,7 @@ export function AgenticIntake({
 
   const handleFormSubmit = () => {
     if (!formData.name || !formData.address) {
-      alert("Please provide at least a name and address");
+      warning("Please provide at least a name and address", "Missing Information");
       return;
     }
     onSubmit(formData);
@@ -193,7 +199,10 @@ export function AgenticIntake({
       website: extractedInfo.website || "",
       description: extractedInfo.description || "",
       serviceType: extractedInfo.serviceType || "both",
-      priceRange: extractedInfo.priceRange || "$$",
+      priceMin: extractedInfo.priceMin || 150000,
+      priceMax: extractedInfo.priceMax || 400000,
+      currency: extractedInfo.currency || "NGN",
+      priceInfo: extractedInfo.priceInfo || "₦1,500-4,000 per person",
       cuisine: extractedInfo.cuisine || ["Nigerian"],
     };
     onSubmit(submission);
@@ -431,13 +440,13 @@ export function AgenticIntake({
                     </Select>
                   </div>
                   <div>
-                    <Label htmlFor="priceRange">Price Range</Label>
+                    <Label htmlFor="priceInfo">Price Range</Label>
                     <Select
-                      value={formData.priceRange}
+                      value={formData.priceInfo}
                       onValueChange={(value) =>
                         setFormData({
                           ...formData,
-                          priceRange: value as "$" | "$$" | "$$$" | "$$$$",
+                          priceInfo: value,
                         })
                       }
                     >
@@ -445,11 +454,17 @@ export function AgenticIntake({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="$">$ - Budget</SelectItem>
-                        <SelectItem value="$$">$$ - Moderate</SelectItem>
-                        <SelectItem value="$$$">$$$ - Expensive</SelectItem>
-                        <SelectItem value="$$$$">
-                          $$$$ - Very Expensive
+                        <SelectItem value="₦500-1,500 per person">
+                          ₦500-1,500 - Budget
+                        </SelectItem>
+                        <SelectItem value="₦1,500-4,000 per person">
+                          ₦1,500-4,000 - Moderate
+                        </SelectItem>
+                        <SelectItem value="₦4,000-8,000 per person">
+                          ₦4,000-8,000 - Expensive
+                        </SelectItem>
+                        <SelectItem value="₦8,000+ per person">
+                          ₦8,000+ - Premium
                         </SelectItem>
                       </SelectContent>
                     </Select>

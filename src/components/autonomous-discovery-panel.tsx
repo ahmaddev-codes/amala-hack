@@ -1,17 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Bot,
-  Search,
-  Globe,
-  Zap,
-  CheckCircle,
-  AlertCircle,
-  Clock,
-} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { 
+  SmartToy as Bot, 
+  Search, 
+  CheckCircle, 
+  Cancel as XCircle,
+  AccessTime as Clock,
+  Language as Globe,
+  FlashOn as Zap,
+  Error as AlertCircle
+} from "@mui/icons-material";
+import { useAuth } from "@/contexts/FirebaseAuthContext";
 
 interface DiscoveryResult {
   totalDiscovered: number;
@@ -27,6 +31,7 @@ interface AutonomousDiscoveryPanelProps {
 export function AutonomousDiscoveryPanel({
   onDiscoveryComplete,
 }: AutonomousDiscoveryPanelProps) {
+  const { getIdToken } = useAuth();
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [discoveryResult, setDiscoveryResult] =
     useState<DiscoveryResult | null>(null);
@@ -40,10 +45,17 @@ export function AutonomousDiscoveryPanel({
     setDiscoveryPhase("Initializing autonomous discovery...");
 
     try {
+      // Get authentication token
+      const idToken = await getIdToken();
+      if (!idToken) {
+        throw new Error('Authentication required for discovery');
+      }
+
       const responsePromise = fetch("/api/discovery", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`,
         },
       });
 

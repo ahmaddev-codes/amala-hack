@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { AmalaLocation } from "@/types/location";
-import { dbOperations } from "@/lib/database/supabase";
+import { firebaseOperations } from "@/lib/firebase/database";
 import { AutonomousDiscoveryPanel } from "@/components/autonomous-discovery-panel";
+import { useToast } from "@/contexts/ToastContext";
 import {
   Dialog,
   DialogContent,
@@ -12,13 +13,13 @@ import {
 } from "@/components/ui/dialog";
 import {
   CheckCircle,
-  XCircle,
-  Clock,
-  MapPin,
+  Cancel as XCircle,
+  AccessTime as Clock,
+  LocationOn as MapPin,
   Phone,
-  Globe,
-  Bot,
-} from "lucide-react";
+  Language as Globe,
+  SmartToy as Bot,
+} from "@mui/icons-material";
 
 interface ModerationPanelProps {
   isOpen: boolean;
@@ -27,7 +28,7 @@ interface ModerationPanelProps {
   onReject?: (locationId: string, reason: string, notes?: string) => void;
   onBulkAction?: (locationIds: string[], action: "approve" | "reject") => void;
   onPendingCountChange?: (count: number) => void;
-  onLocationApproved?: (locationId: string) => void;  // New callback for real-time update
+  onLocationApproved?: (locationId: string) => void; // New callback for real-time update
 }
 
 export function ModerationPanel({
@@ -38,6 +39,7 @@ export function ModerationPanel({
   onBulkAction,
   onPendingCountChange,
 }: ModerationPanelProps) {
+  const { success, error } = useToast();
   const [pendingLocations, setPendingLocations] = useState<AmalaLocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"queue" | "discovery">("queue");
@@ -54,7 +56,7 @@ export function ModerationPanel({
       console.log("📋 Loading pending locations...");
 
       // Get all pending locations
-      const locations = await dbOperations.getLocationsByStatus("pending");
+      const locations = await firebaseOperations.getLocationsByStatus("pending");
       console.log("📊 Pending locations loaded:", locations.length);
       console.log("📍 First location:", locations[0]);
 
@@ -78,7 +80,7 @@ export function ModerationPanel({
         await onApprove(locationId, "Approved via moderation panel");
       } else {
         console.log("💾 Using direct database update");
-        const result = await dbOperations.updateLocationStatus(
+        const result = await firebaseOperations.updateLocationStatus(
           locationId,
           "approved"
         );
@@ -95,13 +97,14 @@ export function ModerationPanel({
       onPendingCountChange?.(newPendingLocations.length);
 
       console.log("✅ Location approved and removed from queue instantly");
-    } catch (error) {
-      console.error("❌ Error approving location:", error);
-      console.error("🔍 Full error details:", JSON.stringify(error, null, 2));
-      alert(
+    } catch (err) {
+      console.error("❌ Error approving location:", err);
+      console.error("🔍 Full error details:", JSON.stringify(err, null, 2));
+      error(
         `Error approving location: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
+          err instanceof Error ? err.message : "Unknown error"
+        }`,
+        "Approval Failed"
       );
     }
   };
@@ -113,7 +116,7 @@ export function ModerationPanel({
       if (onReject) {
         await onReject(locationId, "Rejected via moderation panel", "");
       } else {
-        const result = await dbOperations.updateLocationStatus(
+        const result = await firebaseOperations.updateLocationStatus(
           locationId,
           "rejected"
         );
@@ -130,12 +133,13 @@ export function ModerationPanel({
       onPendingCountChange?.(newPendingLocations.length);
 
       console.log("✅ Location rejected and removed from queue instantly");
-    } catch (error) {
-      console.error("❌ Error rejecting location:", error);
-      alert(
+    } catch (err) {
+      console.error("❌ Error rejecting location:", err);
+      error(
         `Error rejecting location: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
+          err instanceof Error ? err.message : "Unknown error"
+        }`,
+        "Rejection Failed"
       );
     }
   };
@@ -249,7 +253,9 @@ export function ModerationPanel({
                           )}
                           <div className="mt-2 flex items-center space-x-4 text-xs text-gray-500">
                             <span>Source: {location.discoverySource}</span>
-                            <span>Price: {location.priceRange}</span>
+                            <span>
+                              Price: {location.priceInfo || "Not specified"}
+                            </span>
                             <span>Service: {location.serviceType}</span>
                             {location.rating && (
                               <span>Rating: ⭐ {location.rating}</span>

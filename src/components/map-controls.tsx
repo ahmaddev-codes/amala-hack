@@ -8,9 +8,10 @@ import {
   Navigation,
   Satellite,
   Map as MapIcon,
-  RotateCcw,
-  Maximize2,
-} from "lucide-react";
+  MyLocation as LocateIcon,
+  Refresh as RotateCcw,
+  Fullscreen as Maximize2,
+} from "@mui/icons-material";
 import { AmalaLocation } from "@/types/location";
 
 interface MapControlsProps {
@@ -69,71 +70,90 @@ export function MapControls({
     }
   };
 
+  const handleMyLocation = () => {
+    if (!map || !navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const target = new google.maps.LatLng(latitude, longitude);
+        map.panTo(target);
+        const currentZoom = map.getZoom() || 2;
+        if (currentZoom < 12) {
+          map.setZoom(12);
+        }
+      },
+      () => {
+        // Fallback: do nothing if permission denied
+      },
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  };
+
   return (
     <>
-      {/* Zoom Controls - Google Maps style */}
-      <div className="absolute top-4 right-4 bg-white rounded-lg shadow-md overflow-hidden">
-        <button
-          onClick={handleZoomIn}
-          className="block w-10 h-10 flex items-center justify-center hover:bg-gray-100 transition-colors border-b border-gray-200"
-          title="Zoom in"
-        >
-          <ZoomIn className="w-4 h-4 text-gray-700" />
-        </button>
-        <button
-          onClick={handleZoomOut}
-          className="block w-10 h-10 flex items-center justify-center hover:bg-gray-100 transition-colors"
-          title="Zoom out"
-        >
-          <ZoomOut className="w-4 h-4 text-gray-700" />
-        </button>
-      </div>
+      {/* Right side controls - stacked vertically with proper spacing */}
+      <div className="absolute top-4 right-4 space-y-2">
+        {/* Zoom Controls */}
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <button
+            onClick={handleZoomIn}
+            className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 transition-colors border-b border-gray-200"
+            title="Zoom in"
+          >
+            <ZoomIn className="w-4 h-4 text-gray-700" />
+          </button>
+          <button
+            onClick={handleZoomOut}
+            className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 transition-colors"
+            title="Zoom out"
+          >
+            <ZoomOut className="w-4 h-4 text-gray-700" />
+          </button>
+        </div>
 
-      {/* Map Type Toggle */}
-      <div className="absolute top-20 right-4 bg-white rounded-lg shadow-md overflow-hidden">
-        <button
-          onClick={toggleMapType}
-          className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
-          title={
-            mapType === "roadmap" ? "Switch to satellite" : "Switch to map"
-          }
-        >
-          {mapType === "roadmap" ? (
-            <>
-              <Satellite className="w-4 h-4" />
-              <span>Satellite</span>
-            </>
-          ) : (
-            <>
-              <MapIcon className="w-4 h-4" />
-              <span>Map</span>
-            </>
-          )}
-        </button>
-      </div>
+        {/* Map Type Toggle */}
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <button
+            onClick={toggleMapType}
+            className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
+            title={
+              mapType === "roadmap" ? "Switch to satellite" : "Switch to map"
+            }
+          >
+            {mapType === "roadmap" ? (
+              <>
+                <Satellite className="w-4 h-4" />
+                <span className="hidden sm:inline">Satellite</span>
+              </>
+            ) : (
+              <>
+                <MapIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Map</span>
+              </>
+            )}
+          </button>
+        </div>
 
-      {/* Additional Controls */}
-      <div className="absolute bottom-20 right-4 space-y-2">
+        {/* My location button */}
+        <button
+          onClick={handleMyLocation}
+          className="w-10 h-10 bg-white rounded-lg shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
+          title="My location"
+        >
+          <Navigation className="w-4 h-4 text-primary" />
+        </button>
+
         {/* Recenter button */}
         <button
           onClick={handleRecenter}
           className="w-10 h-10 bg-white rounded-lg shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
           title="Show all locations"
         >
-          <Navigation className="w-4 h-4 text-gray-700" />
-        </button>
-
-        {/* Fullscreen button */}
-        <button
-          onClick={handleFullscreen}
-          className="w-10 h-10 bg-white rounded-lg shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
-          title="Fullscreen"
-        >
-          <Maximize2 className="w-4 h-4 text-gray-700" />
+          <LocateIcon className="w-4 h-4 text-gray-700" />
         </button>
       </div>
 
-      {/* Layers Panel */}
+      {/* Bottom right controls */}
       <div className="absolute bottom-4 right-4">
         <button
           onClick={() => setShowLayers(!showLayers)}
@@ -144,7 +164,7 @@ export function MapControls({
         </button>
 
         {showLayers && (
-          <div className="absolute bottom-12 right-0 bg-white rounded-lg shadow-lg border border-gray-200 p-3 w-48">
+          <div className="absolute bottom-12 right-0 bg-white rounded-lg shadow-lg border border-gray-200 p-3 w-48 z-50">
             <h4 className="text-sm font-medium text-gray-900 mb-2">
               Map Layers
             </h4>
@@ -170,28 +190,15 @@ export function MapControls({
         )}
       </div>
 
-      {/* Legend */}
-      <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-md p-3 max-w-xs">
-        <h4 className="text-sm font-medium text-gray-900 mb-2">Legend</h4>
-        <div className="space-y-1 text-xs">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-            <span className="text-gray-700">Open now</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-            <span className="text-gray-700">Closed</span>
-          </div>
-          <div className="flex items-center gap-2 mt-2">
-            <div className="flex">
-              <span className="text-green-600 font-medium">$</span>
-              <span className="text-yellow-600 font-medium">$$</span>
-              <span className="text-orange-600 font-medium">$$$</span>
-              <span className="text-red-600 font-medium">$$$$</span>
-            </div>
-            <span className="text-gray-700">Price range</span>
-          </div>
-        </div>
+      {/* Fullscreen button - separate positioning */}
+      <div className="absolute bottom-16 right-4">
+        <button
+          onClick={handleFullscreen}
+          className="w-10 h-10 bg-white rounded-lg shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
+          title="Fullscreen"
+        >
+          <Maximize2 className="w-4 h-4 text-gray-700" />
+        </button>
       </div>
     </>
   );
