@@ -458,4 +458,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 <p class="text-center font-bold">Built with ❤️ for the lovers of Amala</p>
 <p class="text-center">For a food that knows no origin, bound or tribe.</p>
-<p class="text-center"><a href="https://hack.google.com/" target="_blank" rel="noopener noreferrer">Amala Hackathon 2025</a></p>
+<p class="text-center"><a href="https://the-amala-hackathon.devpost.com//" target="_blank" rel="noopener noreferrer">Amala Hackathon 2025</a></p>
