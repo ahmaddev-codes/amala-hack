@@ -1,8 +1,26 @@
 # Amala Discovery Platform 🍽️
 
-[image](./public/screenshot.png)
+[![Amala Discovery Screenshot](./public/screenshot.png)](https://amala-hack.vercel.app)
 
 A modern web application for discovering authentic Amala restaurants across the globe. Features autonomous location discovery, AI-powered submissions, and real-time moderation.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Next.js](https://img.shields.io/badge/Next.js-13+-black?logo=next.js)](https://nextjs.org/)
+[![Firebase](https://img.shields.io/badge/Firebase-FFCA28?logo=firebase&logoColor=white)](https://firebase.google.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![PWA](https://img.shields.io/badge/PWA-5A0FC8?logo=pwa&logoColor=white)](https://web.dev/progressive-web-apps/)
+
+## 📱 PWA Support
+
+Amala Discovery is now available as a Progressive Web App (PWA)! Install it on your device for an app-like experience with offline capabilities.
+
+## ✨ New Features
+
+- **Progressive Web App (PWA)** - Install on any device for an app-like experience
+- **Enhanced Filters** - Improved filtering with better UI and accessibility
+- **Dark Mode** - Full support for dark and light themes
+- **High Contrast Mode** - Improved accessibility with high contrast support
+- **Optimized Performance** - Faster load times and smoother interactions
 
 ## 🎯 Overview
 
@@ -19,26 +37,37 @@ The Amala Discovery Platform helps food enthusiasts find the best Amala spots wo
 
 ## 🛠️ Tech Stack
 
-**Frontend:**
+### Frontend
 
-- Next.js 15 with App Router
-- TypeScript
-- Tailwind CSS
-- Radix UI Components
+- **Framework**: Next.js 15 with App Router
+- **Language**: TypeScript
+- **Styling**: 
+  - Tailwind CSS
+  - CSS Modules
+  - Radix UI Components
+- **State Management**: React Context + Local Storage
+- **Maps**: Google Maps JavaScript API
+- **Icons**: Lucide React
+- **Form Handling**: React Hook Form
+- **Data Fetching**: SWR + Firebase SDK
 
-**Backend & Services:**
+### Backend & Services
 
-- **Firebase** (Database, Auth & Storage)
-- Google Maps API
-- Google Gemini AI
-- Vercel (Deployment)
+- **Database**: Firebase Firestore
+- **Authentication**: Firebase Authentication
+- **File Storage**: Firebase Storage
+- **AI/ML**: Google Gemini AI
+- **Maps**: Google Maps Platform
+- **Hosting**: Vercel (Frontend) + Firebase (Backend)
 
-**Key Libraries:**
+### Development Tools
 
-- @googlemaps/react-wrapper
-- @google/generative-ai
-- firebase (v10+)
-- Lucide React (Icons)
+- **Linting**: ESLint + Prettier
+- **Type Checking**: TypeScript
+- **Testing**: Jest + React Testing Library
+- **CI/CD**: GitHub Actions
+- **Code Quality**: SonarCloud
+- **Performance**: Lighthouse
 
 ## 🔥 Firebase Migration
 
@@ -64,32 +93,41 @@ The Amala Discovery Platform helps food enthusiasts find the best Amala spots wo
 - ✅ **Improved**: Better error handling and user feedback
 - ✅ **Improved**: Faster image upload and processing
 
-## 🚀 Quick Start
+## 🚀 Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
-- npm or yarn
+- Node.js 18+ (LTS recommended)
+- npm (v9+) or yarn (v1.22+)
 - Firebase account
 - Google Cloud account (Maps API)
 - Google AI Studio account (Gemini API)
+- Git (for version control)
 
-### Installation
+### Local Development
 
-1. **Clone and install**
-
+1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/ahmaddev-codes/amala-hack.git
    cd amala-hack
-   npm install
    ```
 
-2. **Environment Setup**
+2. **Install dependencies**
+   ```bash
+   npm install
+   # or
+   yarn install
+   ```
 
-   Create `.env.local` with the following variables:
+3. **Environment Setup**
+   Copy the example environment file and update with your credentials:
+   ```bash
+   cp .env.local.example .env.local
+   ```
 
+   Update `.env.local` with your Firebase and Google API credentials:
    ```env
-   # Firebase Configuration (Required)
+   # Firebase Configuration
    NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key_here
    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
    NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-project-id
@@ -97,6 +135,12 @@ The Amala Discovery Platform helps food enthusiasts find the best Amala spots wo
    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id_here
    NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id_here
    NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id_here
+   
+   # Google Maps API
+   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+   
+   # Google Gemini AI
+   GOOGLE_AI_API_KEY=your_gemini_api_key
 
    # Firebase Admin SDK (Required for server-side operations)
    FIREBASE_PROJECT_ID=your-project-id
@@ -378,11 +422,33 @@ This app is optimized for Vercel deployment with Firebase backend:
 
 ## 🤝 Contributing
 
+We welcome contributions from the community! Here's how you can help:
+
+1. **Report Bugs**: Open an issue with detailed steps to reproduce
+2. **Suggest Features**: Share your ideas for new features
+3. **Submit Pull Requests**: Follow our development workflow
+
+### Development Workflow
+
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
+3. Commit your changes (`git commit -m 'feat(scope): add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+### Commit Message Format
+
+We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+**Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`
 
 ## 📄 License
 
