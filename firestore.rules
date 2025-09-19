@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Locations collection - Public read, auth required for write
+    match /locations/{locationId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Reviews collection - Only approved reviews are publicly readable
+    match /reviews/{reviewId} {
+      allow read: if resource.data.status == 'approved';
+      allow write: if request.auth != null;
+    }
+    
+    // Analytics events - Auth required
+    match /analytics_events/{eventId} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Restaurant photos - Only approved photos are publicly readable
+    match /restaurant_photos/{photoId} {
+      allow read: if resource.data.status == 'approved';
+      allow write: if request.auth != null;
+    }
+    
+    // Moderation logs - Admin/moderator only (roles checked server-side via API)
+    match /moderation_logs/{logId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
