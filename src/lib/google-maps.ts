@@ -68,7 +68,7 @@ export const loadGoogleMaps = (config: GoogleMapsConfig): Promise<void> => {
     const script = document.createElement("script");
     const libraries = config.libraries?.join(",") || "places,geometry";
 
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${config.apiKey}&libraries=${libraries}&v=weekly&callback=initMap`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${config.apiKey}&libraries=${libraries}&loading=async&v=weekly&callback=initMap`;
     script.async = true;
     script.defer = true;
 

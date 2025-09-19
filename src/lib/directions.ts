@@ -119,7 +119,9 @@ export function shareLocationWithDirections(location: AmalaLocation) {
       navigator.clipboard
         .writeText(shareText)
         .then(() => {
-          alert("Location details copied to clipboard!");
+          // Note: This function doesn't have access to toast context
+          // The calling component should handle the success message
+          console.log("Location details copied to clipboard!");
         })
         .catch(() => {
           // Final fallback - open share URL
