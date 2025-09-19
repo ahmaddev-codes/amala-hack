@@ -1,53 +1,52 @@
-/* Google Fonts - Product Sans */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+/* Google Sans Font from local files */
 
 @import "tailwindcss";
 @import "tw-animate-css";
 
 /* Google Sans Font from local files */
 @font-face {
-  font-family: 'Google Sans';
-  src: url('/fonts/GoogleSans-Regular.ttf') format('truetype');
+  font-family: "Google Sans";
+  src: url("/fonts/GoogleSans-Regular.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Google Sans';
-  src: url('/fonts/GoogleSans-Medium.ttf') format('truetype');
+  font-family: "Google Sans";
+  src: url("/fonts/GoogleSans-Medium.ttf") format("truetype");
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Google Sans';
-  src: url('/fonts/GoogleSans-Bold.ttf') format('truetype');
+  font-family: "Google Sans";
+  src: url("/fonts/GoogleSans-Bold.ttf") format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Google Sans';
-  src: url('/fonts/GoogleSans-Italic.ttf') format('truetype');
+  font-family: "Google Sans";
+  src: url("/fonts/GoogleSans-Italic.ttf") format("truetype");
   font-weight: 400;
   font-style: italic;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Google Sans';
-  src: url('/fonts/GoogleSans-MediumItalic.ttf') format('truetype');
+  font-family: "Google Sans";
+  src: url("/fonts/GoogleSans-MediumItalic.ttf") format("truetype");
   font-weight: 500;
   font-style: italic;
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Google Sans';
-  src: url('/fonts/GoogleSans-BoldItalic.ttf') format('truetype');
+  font-family: "Google Sans";
+  src: url("/fonts/GoogleSans-BoldItalic.ttf") format("truetype");
   font-weight: 700;
   font-style: italic;
   font-display: swap;
@@ -58,9 +57,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Google Sans", Roboto, "Inter", -apple-system, BlinkMacSystemFont,
+  --font-sans: "Google Sans", Roboto, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
-  --font-mono: var(--font-geist-mono);
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Consolas,
+    "Liberation Mono", Menlo, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -104,7 +104,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: #007B8B;
+  --primary: #007b8b;
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -138,7 +138,7 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: #007B8B;
+  --primary: #007b8b;
   --primary-foreground: oklch(0.205 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
@@ -173,26 +173,26 @@
   --card-foreground: black;
   --popover: white;
   --popover-foreground: black;
-  --primary: #0000FF; /* Dark blue for high contrast */
+  --primary: #0000ff; /* Dark blue for high contrast */
   --primary-foreground: white;
-  --secondary: #E5E5E5;
+  --secondary: #e5e5e5;
   --secondary-foreground: black;
-  --muted: #E5E5E5;
+  --muted: #e5e5e5;
   --muted-foreground: black;
-  --accent: #E5E5E5;
+  --accent: #e5e5e5;
   --accent-foreground: black;
-  --destructive: #FF0000;
+  --destructive: #ff0000;
   --border: #000000;
   --input: #000000;
-  --ring: #0000FF;
+  --ring: #0000ff;
   --sidebar: white;
   --sidebar-foreground: black;
-  --sidebar-primary: #0000FF;
+  --sidebar-primary: #0000ff;
   --sidebar-primary-foreground: white;
-  --sidebar-accent: #E5E5E5;
+  --sidebar-accent: #e5e5e5;
   --sidebar-accent-foreground: black;
   --sidebar-border: #000000;
-  --sidebar-ring: #0000FF;
+  --sidebar-ring: #0000ff;
 }
 
 .dark.high-contrast {
@@ -202,26 +202,26 @@
   --card-foreground: white;
   --popover: black;
   --popover-foreground: white;
-  --primary: #0000FF;
+  --primary: #0000ff;
   --primary-foreground: white;
-  --secondary: #1A1A1A;
+  --secondary: #1a1a1a;
   --secondary-foreground: white;
-  --muted: #1A1A1A;
+  --muted: #1a1a1a;
   --muted-foreground: white;
-  --accent: #1A1A1A;
+  --accent: #1a1a1a;
   --accent-foreground: white;
-  --destructive: #FF0000;
-  --border: #FFFFFF;
-  --input: #FFFFFF;
-  --ring: #0000FF;
+  --destructive: #ff0000;
+  --border: #ffffff;
+  --input: #ffffff;
+  --ring: #0000ff;
   --sidebar: black;
   --sidebar-foreground: white;
-  --sidebar-primary: #0000FF;
+  --sidebar-primary: #0000ff;
   --sidebar-primary-foreground: white;
-  --sidebar-accent: #1A1A1A;
+  --sidebar-accent: #1a1a1a;
   --sidebar-accent-foreground: white;
-  --sidebar-border: #FFFFFF;
-  --sidebar-ring: #0000FF;
+  --sidebar-border: #ffffff;
+  --sidebar-ring: #0000ff;
 }
 
 @layer base {
@@ -230,7 +230,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: "Google Sans", Roboto, "Inter", -apple-system, BlinkMacSystemFont,
+    font-family: "Google Sans", Roboto, -apple-system, BlinkMacSystemFont,
       "Segoe UI", sans-serif;
   }
 
@@ -245,14 +245,56 @@
     outline-offset: 2px;
   }
 
-  /* Reduced motion */
+  /* Reduced motion - exclude Google Maps elements */
   @media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
+    *:not([class*="gm-"]):not([id*="gm-"]),
+    *:not([class*="gm-"])::before,
+    *:not([class*="gm-"])::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+
+    /* Preserve smooth interactions for Google Maps */
+    [class*="gm-"],
+    [id*="gm-"],
+    .gm-style *,
+    .gm-style *::before,
+    .gm-style *::after {
+      animation-duration: revert !important;
+      animation-iteration-count: revert !important;
+      transition-duration: revert !important;
+    }
   }
+}
+
+/* Toast Animations */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out;
+}
+
+.animate-slide-out-right {
+  animation: slide-out-right 0.3s ease-in;
 }
