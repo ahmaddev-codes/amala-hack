@@ -41,16 +41,16 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Amala Discovery Platform',
     description: 'Discover authentic Amala restaurants worldwide',
-    images: ['/og-image.png'],
+    images: ['/google-maps-logo.png'],
   },
   icons: {
     icon: [
-      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512x512.png", sizes: "512x512", type: "image/png" },
+      { url: "/google-maps-logo.png", sizes: "192x192", type: "image/png" },
+      { url: "/google-maps-logo.png", sizes: "512x512", type: "image/png" },
     ],
-    shortcut: "/favicon.ico",
+    shortcut: "/google-maps-logo.png",
     apple: [
-      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+      { url: "/google-maps-logo.png", sizes: "180x180", type: "image/png" },
     ],
   },
   manifest: "/manifest.json",
@@ -84,10 +84,20 @@ export default function RootLayout({
           </ToastProvider>
         </AuthProvider>
         
-        {/* Service Worker Registration */}
+        {/* Service Worker Registration & Error Handling */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
+              // Global error handlers
+              window.addEventListener('unhandledrejection', function(event) {
+                console.error('Unhandled promise rejection:', event.reason);
+                event.preventDefault();
+              });
+              
+              window.addEventListener('error', function(event) {
+                console.error('Global error:', event.error);
+              });
+              
               if ('serviceWorker' in navigator) {
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js')

@@ -16,7 +16,7 @@ import {
   formatLocationInfo,
 } from "@/lib/google-maps";
 import { MapClusterer } from "@/lib/map-clustering";
-import { Refresh as Loader2, Error as AlertCircle } from "@mui/icons-material";
+import { ArrowPathIcon as Loader2, ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline";
 import { MapControls } from "./map-controls";
 import { GoogleMapsLocationDetail } from "./google-maps-location-detail";
 
@@ -311,14 +311,8 @@ export function MapContainer({
 
       {/* Loading overlay */}
       {isLoading && (
-        <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-primary/5 to-indigo-100 flex items-center justify-center z-10">
-          <div className="text-center">
-            <Loader2 className="w-8 h-8 mx-auto mb-4 text-primary animate-spin" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Loading Map
-            </h3>
-            <p className="text-gray-600">Initializing Google Maps...</p>
-          </div>
+        <div className="absolute inset-0 w-full h-full bg-white/80 flex items-center justify-center z-10">
+          <div className="w-8 h-8 border-2 border-orange-200 border-t-orange-500 rounded-full animate-spin"></div>
         </div>
       )}
 

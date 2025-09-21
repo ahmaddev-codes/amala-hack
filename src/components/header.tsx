@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import {
-  Menu,
-  Add as Plus,
-  Search,
-  Close as X,
-  LocationOn as MapPin,
-  Visibility as Eye,
-} from "@mui/icons-material";
+  Bars3Icon as Menu,
+  PlusIcon as Plus,
+  MagnifyingGlassIcon as Search,
+  XMarkIcon as X,
+  MapPinIcon,
+  EyeIcon as Eye,
+} from "@heroicons/react/24/outline";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 interface HeaderProps {
   onAddLocation: () => void;
@@ -81,8 +82,7 @@ export function Header({
         <div className="flex items-center px-4 py-1.5 gap-2">
           {/* Search bar */}
           <div className="flex-1 relative min-w-0" role="search">
-            <div className="flex items-center">
-              <Search className="h-4 w-4 text-gray-500 ml-1 mr-2 flex-shrink-0" aria-hidden="true" />
+            <div className="flex items-center space-x-3">
               <input
                 type="text"
                 placeholder="Search locations..."
@@ -96,6 +96,7 @@ export function Header({
                 aria-haspopup="listbox"
                 role="combobox"
                 aria-autocomplete="list"
+                aria-controls="search-results"
               />
               {searchQuery && (
                 <button
@@ -114,7 +115,8 @@ export function Header({
             {/* Search results dropdown */}
             {showSearchResults && searchResults.length > 0 && (
               <div 
-                className="absolute left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto z-60"
+                id="search-results"
+                className="absolute left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto z-60 w-full"
                 role="listbox"
                 aria-label="Search results"
               >
@@ -129,7 +131,7 @@ export function Header({
                       tabIndex={0}
                     >
                       <div className="flex items-center gap-2">
-                        <MapPin className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                        <MapPinIcon className="w-3 h-3 text-gray-500 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-gray-900 truncate text-sm">
                             {result.name}
@@ -151,12 +153,14 @@ export function Header({
             )}
           </div>
 
-          {/* Action buttons - compact layout */}
+          {/* Action buttons */}
           <div className="flex items-center gap-1 flex-shrink-0">
             <button
               onClick={toggleHighContrast}
               aria-pressed={highContrast}
-              className="p-1.5 rounded-full hover:bg-gray-100/90 text-gray-600 hover:text-gray-900 transition-colors active:scale-95 duration-200 hidden sm:block"
+              className={`p-1.5 rounded-full hover:bg-gray-100/90 text-gray-600 hover:text-gray-900 transition-colors active:scale-95 duration-200 hidden sm:block ${
+                highContrast ? 'ring-2 ring-blue-500 bg-blue-50 text-blue-700' : ''
+              }`}
               aria-label={`${highContrast ? 'Disable' : 'Enable'} high contrast mode`}
               title={`${highContrast ? 'Disable' : 'Enable'} high contrast mode`}
             >
@@ -165,7 +169,7 @@ export function Header({
 
             <button
               onClick={onAddLocation}
-              className="bg-primary hover:bg-green-700 focus:bg-green-700 text-white rounded-full px-3 py-2 text-xs font-medium transition-colors duration-200 flex items-center gap-1"
+              className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-full font-medium transition-colors flex items-center space-x-2 shadow-sm"
               aria-label="Add a new Amala location"
             >
               <Plus className="h-4 w-4" aria-hidden="true" />

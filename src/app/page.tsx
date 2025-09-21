@@ -3,46 +3,33 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import {
-  ArrowBack as ArrowLeft,
-  LocationOn as MapPin,
-  Star,
-  AttachMoney as DollarSign,
-  Phone,
-  Language as Globe,
-} from "@mui/icons-material";
+  ArrowLeftIcon,
+  MapPinIcon as MapPin,
+  StarIcon as Star,
+  CurrencyDollarIcon as DollarSign,
+  PhoneIcon as Phone,
+  GlobeAltIcon as Globe,
+} from "@heroicons/react/24/outline";
 import { MapContainer } from "@/components/map-container";
 import { Header } from "@/components/header";
 import { MapUserProfile } from "@/components/map-user-profile";
-import { AgenticIntake } from "@/components/agentic-intake";
-import { ModerationPanel } from "@/components/moderation-panel";
+import { LocationSubmissionDialog } from "@/components/location-submission-dialog";
 import { CentralFilters } from "@/components/central-filters";
 import { GoogleMapsLocationDetail } from "@/components/google-maps-location-detail";
+import { LoadingScreen } from "@/components/loading-screen";
 import { useToast } from "@/contexts/ToastContext";
-import { formatPriceRange } from "@/lib/currency-utils";
+import { useAuth } from "@/contexts/FirebaseAuthContext";
 import { firebaseOperations } from "@/lib/firebase/database";
-import { LocationService } from "@/lib/services/location-service";
 import {
   AmalaLocation,
   LocationFilter,
   LocationSubmission,
+  LocationResult,
 } from "@/types/location";
-
-// Helper function for restaurant image placeholders
-const getRestaurantPlaceholder = (locationName: string, index: number) => {
-  const placeholderColors = [
-    "bg-gradient-to-br from-orange-400 to-red-500",
-    "bg-gradient-to-br from-green-400 to-blue-500",
-    "bg-gradient-to-br from-purple-400 to-pink-500",
-    "bg-gradient-to-br from-yellow-400 to-orange-500",
-    "bg-gradient-to-br from-blue-400 to-indigo-500",
-  ];
-
-  const colorIndex = (locationName.length + index) % placeholderColors.length;
-  return placeholderColors[colorIndex];
-};
 
 export default function Home() {
   const { success, info, error } = useToast();
+  const { isLoading: isAuthLoading } = useAuth();
   const [allLocations, setAllLocations] = useState<AmalaLocation[]>([]);
   const [filteredLocations, setFilteredLocations] = useState<AmalaLocation[]>(
     []
@@ -52,7 +39,6 @@ export default function Home() {
   const [selectedLocation, setSelectedLocation] =
     useState<AmalaLocation | null>(null);
   const [showIntakeDialog, setShowIntakeDialog] = useState(false);
-  const [showModerationPanel, setShowModerationPanel] = useState(false);
   const [searchResults, setSearchResults] = useState<AmalaLocation[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -83,23 +69,31 @@ export default function Home() {
   useEffect(() => {
     const loadLocations = async () => {
       try {
-        setIsLoadingLocations(true);
+        console.log("🔄 Starting to load locations...");
+        // Don't set loading to true again since it starts as true
         const locationsFromDb = await firebaseOperations.getAllLocations({});
         const loadedLocations = locationsFromDb.filter(
           (loc) => loc.status === "approved"
         );
+        console.log(`✅ Loaded ${loadedLocations.length} approved locations`);
         setAllLocations(loadedLocations);
         setFilteredLocations(loadedLocations);
-        const pending = await firebaseOperations.getLocationsByStatus("pending");
-        setPendingCount(pending.length);
+        
+        // Load pending count for moderators/admins
+        const pendingLocations = locationsFromDb.filter(loc => loc.status === 'pending');
+        setPendingCount(pendingLocations.length);
       } catch (error) {
-        console.error("Error loading locations:", error);
+        console.error("❌ Error loading locations:", error);
       } finally {
         setIsLoadingLocations(false);
       }
     };
-    loadLocations();
-  }, []);
+    
+    // Only load locations after auth is ready
+    if (!isAuthLoading) {
+      loadLocations();
+    }
+  }, [isAuthLoading]);
 
   // Filter locations when filters change
   useEffect(() => {
@@ -130,25 +124,47 @@ export default function Home() {
     setFilteredLocations(filtered);
   }, [filters, allLocations]);
 
-  const handleLocationSubmit = async (submission: LocationSubmission) => {
+  const handleLocationSubmit = async (locations: LocationResult[]) => {
     try {
-      const response = await fetch("/api/locations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          location: submission,
-          submitterInfo: {
-            timestamp: new Date().toISOString(),
-            userAgent: navigator.userAgent,
-          },
-        }),
+      const submissionPromises = locations.map(async (location) => {
+        const submission: LocationSubmission = {
+          name: location.name,
+          address: location.address,
+          description: location.description || `Amala restaurant found via AI search`,
+          coordinates: location.coordinates || { lat: 6.5244, lng: 3.3792 }, // Default to Lagos
+          phone: location.phone,
+          website: location.website,
+          rating: location.rating,
+          priceInfo: location.priceRange,
+          photos: location.photos || [],
+          cuisine: ["Nigerian", "Amala"],
+          openingHours: {},
+        };
+
+        const response = await fetch("/api/locations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            location: submission,
+            submitterInfo: {
+              timestamp: new Date().toISOString(),
+              userAgent: navigator.userAgent,
+              source: location.source,
+              confidence: location.confidence,
+            },
+          }),
+        });
+
+        const result = await response.json();
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+        return result;
       });
 
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.error);
-      }
+      await Promise.all(submissionPromises);
 
+      // Refresh locations
       const locationsFromDb = await firebaseOperations.getAllLocations({});
       const approvedLocations = locationsFromDb.filter(
         (loc) => loc.status === "approved"
@@ -156,9 +172,13 @@ export default function Home() {
       setAllLocations(approvedLocations);
       setFilteredLocations(approvedLocations);
       setShowIntakeDialog(false);
-      success(`Location "${submission.name}" submitted for moderation!`, "Submission Successful");
+      
+      success(
+        `${locations.length} location${locations.length > 1 ? 's' : ''} submitted for moderation!`, 
+        "Submission Successful"
+      );
     } catch (err) {
-      console.error("Error submitting location:", err);
+      console.error("Error submitting locations:", err);
       error("Error submitting location. Please try again.", "Submission Failed");
     }
   };
@@ -208,21 +228,23 @@ export default function Home() {
     }
   };
 
-  if (isLoadingLocations) {
+  // Show loading screen while auth is initializing or locations are loading
+  if (isAuthLoading || isLoadingLocations) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent"></div>
-          <p className="mt-4 text-gray-600">
-            Loading delicious Amala locations...
-          </p>
-        </div>
-      </div>
+      <LoadingScreen
+        message="Amala Map"
+        submessage={
+          isAuthLoading 
+            ? "Initializing your native taste buds..." 
+            : "Loading delicious Amala locations worldwide..."
+        }
+        showLogo={true}
+      />
     );
   }
   return (
-    <div className="h-screen w-full bg-gray-100 overflow-hidden flex">
-      {/* Google Maps Style Sidebar with Sliding Animation - absolutely positioned */}
+    <div className="h-screen w-full bg-gray-100 overflow-hidden flex animate-in fade-in duration-500">
+      {/* Sidebar with Sliding Animation - absolutely positioned */}
       <div
         className={`fixed top-0 left-0 h-full w-[408px] bg-white shadow-lg z-30 transition-transform duration-300 ease-in-out xl:block hidden ${
           isSidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -407,48 +429,18 @@ export default function Home() {
             {selectedLocation && (
               <GoogleMapsLocationDetail
                 location={selectedLocation}
+                variant="full"
                 onClose={() => setSelectedLocation(null)}
-                onDirections={() => {
-                  const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedLocation.coordinates.lat},${selectedLocation.coordinates.lng}`;
-                  window.open(url, "_blank");
-                  info("Opening Google Maps for directions", "Navigation");
-                }}
-                onCall={() => {
-                  if (selectedLocation.phone) {
-                    window.open(`tel:${selectedLocation.phone}`, "_self");
-                    info(`Calling ${selectedLocation.name}`, "Phone Call");
-                  } else {
-                    info("Phone number not available", "Call");
-                  }
-                }}
-                onShare={() => {
-                  if (navigator.share) {
-                    navigator.share({
-                      title: selectedLocation.name,
-                      text: `Check out ${selectedLocation.name} - ${selectedLocation.address}`,
-                      url: window.location.href,
-                    });
-                    success("Location shared successfully!", "Shared");
-                  } else {
-                    // Fallback: Copy to clipboard
-                    navigator.clipboard.writeText(window.location.href);
-                    success("Location link copied to clipboard!", "Shared");
-                  }
-                }}
-                onSave={() => {
-                  success(
-                    `${selectedLocation.name} saved to your favorites!`,
-                    "Saved"
-                  );
-                  // TODO: Implement actual save functionality
-                }}
+                onDirections={() => {}}
+                onShare={() => {}}
+                onSave={() => {}}
               />
             )}
           </div>
         </div>
       </div>
 
-      {/* Main Map Container - takes remaining space */}
+      {/* Main Map Container */}
       <div className="flex-1 h-full relative">
         <MapContainer
           locations={filteredLocations}
@@ -473,7 +465,7 @@ export default function Home() {
         />
       </div>
 
-      {/* Google-style floating filters - positioned at top center */}
+      {/* floating filters - positioned at top center */}
       <CentralFilters
         filters={filters}
         onFilterChange={(newFilters) => {
@@ -486,23 +478,13 @@ export default function Home() {
       />
 
       {/* Dialogs */}
-      <AgenticIntake
+      <LocationSubmissionDialog
         isOpen={showIntakeDialog}
         onClose={() => setShowIntakeDialog(false)}
         onSubmit={handleLocationSubmit}
-        existingLocations={allLocations}
       />
 
-      <ModerationPanel
-        isOpen={showModerationPanel}
-        onClose={() => setShowModerationPanel(false)}
-        onApprove={handleApproveLocation}
-        onReject={handleRejectLocation}
-        onBulkAction={handleBulkAction}
-        onPendingCountChange={setPendingCount}
-      />
-
-      {/* User Profile - positioned like Google Maps */}
+      {/* User Profile */}
       <MapUserProfile />
     </div>
   );

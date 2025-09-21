@@ -2,16 +2,16 @@
 
 import { useState } from "react";
 import {
-  Layers,
-  ZoomIn,
-  ZoomOut,
-  Navigation,
-  Satellite,
-  Map as MapIcon,
-  MyLocation as LocateIcon,
-  Refresh as RotateCcw,
-  Fullscreen as Maximize2,
-} from "@mui/icons-material";
+  Squares2X2Icon as Layers,
+  PlusIcon as ZoomIn,
+  MinusIcon as ZoomOut,
+  ArrowTopRightOnSquareIcon as Navigation,
+  GlobeAltIcon as Satellite,
+  MapIcon,
+  MapPinIcon as LocateIcon,
+  ArrowPathIcon as RotateCcw,
+  ArrowsPointingOutIcon as Maximize2,
+} from "@heroicons/react/24/outline";
 import { AmalaLocation } from "@/types/location";
 
 interface MapControlsProps {
