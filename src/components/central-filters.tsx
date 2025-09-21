@@ -2,13 +2,13 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import {
-  AccessTime as Clock,
-  AttachMoney as DollarSign,
-  LocationOn as MapPin,
-  Close as X,
-  ExpandMore as ChevronDown,
-  Restaurant as RestaurantIcon,
-} from "@mui/icons-material";
+  ClockIcon as Clock,
+  CurrencyDollarIcon as DollarSign,
+  MapPinIcon as MapPin,
+  XMarkIcon as X,
+  ChevronDownIcon as ChevronDown,
+  BuildingStorefrontIcon as RestaurantIcon,
+} from "@heroicons/react/24/outline";
 import { LocationFilter } from "@/types/location";
 
 // Define the types inline since they're not exported from the location types
@@ -97,7 +97,7 @@ export function CentralFilters({
   };
 
   return (
-    <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-40 pointer-events-none">
+    <div className="fixed top-12 left-1/2 transform -translate-x-1/2 z-40 pointer-events-none">
       <div className="flex items-center gap-2 pointer-events-auto">
         {/* Open Now Filter */}
         <button

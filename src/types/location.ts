@@ -71,6 +71,7 @@ export interface AmalaLocation {
   priceRange?: string; // Price range like "$", "$$", "$$$", "$$$$"
   enrichedAt?: string;
   enrichmentSource?: string;
+  lastEnriched?: Date; // Performance optimization: track when location was last enriched
 }
 
 export interface Review {
@@ -102,23 +103,39 @@ export interface LocationFilter {
   sortBy?: "name_asc" | "name_desc" | "default";
 }
 
+export interface LocationResult {
+  id?: string;
+  name: string;
+  address: string;
+  description?: string;
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
+  phone?: string;
+  website?: string;
+  rating?: number;
+  priceRange?: string;
+  photos?: string[];
+  source?: string;
+  confidence?: number;
+}
+
 export interface LocationSubmission {
   name: string;
   address: string;
+  description?: string;
+  coordinates: {
+    lat: number;
+    lng: number;
+  };
   phone?: string;
   website?: string;
-  description?: string;
-  serviceType: "dine-in" | "takeaway" | "both";
-  priceMin?: number; // Price in smallest currency unit (cents, kobo, pence)
-  priceMax?: number; // Price in smallest currency unit
-  currency?: string; // Currency code (NGN, USD, GBP, CAD)
-  priceInfo?: string; // Human readable price e.g. "₦1,500-3,000 per person"
-  priceLevel?: number; // Google Places price_level (0-4)
+  rating?: number;
+  priceInfo?: string;
+  photos?: string[];
   cuisine: string[];
-  city?: string; // Added for global location context
-  country?: string; // Added for global location context
-  submitterInfo?: {
-    name?: string;
-    email?: string;
-  };
+  openingHours: Record<string, any>;
+  source?: string;
+  confidence?: number;
 }

@@ -3,10 +3,10 @@
 import * as React from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import {
-  Check as CheckIcon,
-  ExpandMore as ChevronDownIcon,
-  ExpandLess as ChevronUpIcon,
-} from "@mui/icons-material";
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+} from "@heroicons/react/24/outline";
 
 import { cn } from "@/lib/utils";
 

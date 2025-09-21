@@ -1,18 +1,18 @@
 "use client";
 
 import {
-  Star,
-  AccessTime as Clock,
-  Phone,
-  Language as Globe,
-  LocationOn as MapPin,
-  Navigation,
-  Share as Share2,
-  Favorite as Heart,
-  CameraAlt as Camera,
-  AttachMoney as DollarSign,
-  RateReview,
-} from "@mui/icons-material";
+  StarIcon as Star,
+  ClockIcon as Clock,
+  PhoneIcon as Phone,
+  GlobeAltIcon as Globe,
+  MapPinIcon as MapPin,
+  ArrowTopRightOnSquareIcon as Navigation,
+  ShareIcon as Share2,
+  HeartIcon as Heart,
+  CameraIcon as Camera,
+  CurrencyDollarIcon as DollarSign,
+  ChatBubbleLeftEllipsisIcon as RateReview,
+} from "@heroicons/react/24/outline";
 import React from "react";
 import { AmalaLocation } from "@/types/location";
 import { formatPriceRange } from "@/lib/currency-utils";
@@ -30,7 +30,7 @@ interface LocationInfoWindowProps {
   onSave?: () => void;
 }
 
-export function LocationInfoWindow({ location, onDirections, onShare }: LocationInfoWindowProps) {
+export function LocationInfoWindow({ location, onDirections, onShare, onSave }: LocationInfoWindowProps) {
   const { user } = useAuth();
   const { info } = useToast();
   const [showReviewForm, setShowReviewForm] = useState(false);
@@ -60,7 +60,18 @@ export function LocationInfoWindow({ location, onDirections, onShare }: Location
   };
 
   const handleShare = () => {
-    shareLocationWithDirections(location);
+    // Share location using Web Share API or fallback to clipboard
+    if (navigator.share) {
+      navigator.share({
+        title: location.name,
+        text: `Check out ${location.name} - ${location.description || 'Great Amala spot!'}`,
+        url: `${window.location.origin}/?location=${location.id}`,
+      });
+    } else {
+      // Fallback to clipboard
+      navigator.clipboard.writeText(`${location.name} - ${location.address}`);
+      info("Location details copied to clipboard!", "Shared");
+    }
     onShare?.();
     trackEvent({ type: "place_viewed", id: location.id });
   };
@@ -76,12 +87,18 @@ export function LocationInfoWindow({ location, onDirections, onShare }: Location
             className="w-full h-full object-cover"
             fill
             unoptimized
+            onError={(e) => {
+              // Hide the image and show the fallback icon on error
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+            }}
           />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Camera className="w-8 h-8 text-white opacity-60" />
-          </div>
-        )}
+        ) : null}
+        
+        {/* Always show fallback icon container, but hide it when image loads successfully */}
+        <div className="w-full h-full flex items-center justify-center">
+          <Camera className="w-8 h-8 text-white opacity-60" />
+        </div>
 
         {/* Status badge */}
         <div className="absolute top-2 right-2">
@@ -216,7 +233,7 @@ export function LocationInfoWindow({ location, onDirections, onShare }: Location
         </div>
 
         {/* Write Review Button */}
-        {!isLoading && user && (
+        {user && (
           <button
             onClick={() => setShowReviewForm(true)}
             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-3"

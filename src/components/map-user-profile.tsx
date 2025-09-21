@@ -5,13 +5,103 @@ import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/contexts/FirebaseAuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { Person as User, Logout as SignOut } from "@mui/icons-material";
+import { UserIcon, ArrowRightOnRectangleIcon, ShieldCheckIcon, EyeIcon, MagnifyingGlassIcon, ChartBarIcon } from "@heroicons/react/24/outline";
+
+// Component for profile image with fallback
+function ProfileImage({ src, alt, size = 32, className = "" }: { src?: string; alt: string; size?: number; className?: string }) {
+  const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [isGoogleImage, setIsGoogleImage] = useState(false);
+
+  // Reset error state when src changes
+  React.useEffect(() => {
+    setImageError(false);
+    setImageLoaded(false);
+    setIsGoogleImage(src?.includes('googleusercontent.com') || false);
+  }, [src]);
+
+  // If no src provided or image failed to load, show fallback
+  if (!src || imageError) {
+    return (
+      <div className={`rounded-full bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center ${className}`} style={{ width: size, height: size }}>
+        <UserIcon className="text-orange-600" style={{ width: size * 0.6, height: size * 0.6 }} />
+      </div>
+    );
+  }
+
+  // Create a more robust image loading approach
+  const handleImageError = () => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🖼️ Profile image failed to load, using fallback');
+    }
+    setImageError(true);
+  };
+
+  const handleImageLoad = () => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('✅ Profile image loaded successfully');
+    }
+    setImageLoaded(true);
+  };
+
+  // For Google profile photos, use a simple approach to avoid rate limiting
+  if (isGoogleImage) {
+    // Use a fixed size to avoid multiple requests
+    const googleSrc = size <= 64 ? src.replace(/=s\d+-c$/, '=s64-c') : src;
+
+    return (
+      <div className="relative" style={{ width: size, height: size }}>
+        <img
+          src={googleSrc}
+          alt={alt}
+          width={size}
+          height={size}
+          className={`rounded-full ${className} ${imageLoaded ? 'opacity-100' : 'opacity-0'} transition-opacity duration-200`}
+          onError={handleImageError}
+          onLoad={handleImageLoad}
+          style={{ width: size, height: size }}
+          referrerPolicy="no-referrer"
+          loading="lazy"
+        />
+        {!imageLoaded && !imageError && (
+          <div className={`absolute inset-0 rounded-full bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center ${className}`}>
+            <UserIcon className="text-orange-600" style={{ width: size * 0.6, height: size * 0.6 }} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // For other images, use Next.js Image component
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      width={size}
+      height={size}
+      className={`rounded-full ${className}`}
+      onError={handleImageError}
+      onLoad={handleImageLoad}
+    />
+  );
+}
 
 export function MapUserProfile() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showHoverText, setShowHoverText] = useState(false);
   const { user, signOut, isLoading, canAdmin, canModerate } = useAuth();
   const { info } = useToast();
+
+  // Only log critical user data changes in development
+  React.useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && user) {
+      console.log('👤 User profile loaded:', {
+        email: user.email,
+        hasAvatar: !!user.avatar,
+        roles: user.roles
+      });
+    }
+  }, [user]);
 
   if (isLoading) {
     return null;
@@ -28,17 +118,12 @@ export function MapUserProfile() {
             className="w-10 h-10 bg-white rounded-full shadow-lg border-2 border-red-500 hover:shadow-xl transition-all duration-200 flex items-center justify-center"
             title={`Signed in as ${user.email}`}
           >
-            {user.avatar ? (
-              <Image
-                src={user.avatar}
-                alt="Profile"
-                width={32}
-                height={32}
-                className="w-8 h-8 rounded-full"
-              />
-            ) : (
-              <User className="h-5 w-5 text-gray-600" />
-            )}
+            <ProfileImage 
+              src={user.avatar} 
+              alt="Profile" 
+              size={32} 
+              className="w-8 h-8" 
+            />
           </button>
 
           {/* Hover logout text - positioned sideways (left) */}
@@ -53,25 +138,12 @@ export function MapUserProfile() {
               {/* User Info Section */}
               <div className="px-4 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-3">
-                  {user.avatar ? (
-                    <Image
-                      src={user.avatar}
-                      alt="Profile"
-                      width={40}
-                      height={40}
-                      className="w-10 h-10 rounded-full"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-100">
-                      <Image
-                        src="/placeholder-image.svg"
-                        alt="Profile"
-                        width={40}
-                        height={40}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
+                  <ProfileImage 
+                    src={user.avatar} 
+                    alt="Profile" 
+                    size={40} 
+                    className="w-10 h-10" 
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-gray-900 truncate text-sm">
                       {user.name || user.email?.split("@")[0] || "User"}
@@ -125,46 +197,33 @@ export function MapUserProfile() {
                 user.roles.includes("scout")) && (
                 <div className="border-t border-gray-100 pt-2">
                   {canAdmin() && (
-                    <>
-                      <Link
-                        href="/admin"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
-                        onClick={() => setShowUserMenu(false)}
-                      >
-                        � Admin Dashboard
-                      </Link>
-                      <Link
-                        href="/admin/metrics"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
-                        onClick={() => setShowUserMenu(false)}
-                      >
-                        📊 Analytics & Metrics
-                      </Link>
-                      <Link
-                        href="/admin/users"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
-                        onClick={() => setShowUserMenu(false)}
-                      >
-                        👥 User Management
-                      </Link>
-                    </>
+                    <Link
+                      href="/admin"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
+                      onClick={() => setShowUserMenu(false)}
+                    >
+                      <ShieldCheckIcon className="h-4 w-4" />
+                      Admin Dashboard
+                    </Link>
                   )}
                   {canModerate() && (
                     <Link
                       href="/moderator"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
                       onClick={() => setShowUserMenu(false)}
                     >
-                      🛡️ Moderation Center
+                      <EyeIcon className="h-4 w-4" />
+                      Moderator Dashboard
                     </Link>
                   )}
                   {user.roles.includes("scout") && (
                     <Link
                       href="/scout"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
                       onClick={() => setShowUserMenu(false)}
                     >
-                      🔍 Scout Dashboard
+                      <MagnifyingGlassIcon className="h-4 w-4" />
+                      Scout Dashboard
                     </Link>
                   )}
                 </div>
@@ -180,7 +239,7 @@ export function MapUserProfile() {
                   }}
                   className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors duration-150"
                 >
-                  <SignOut className="h-4 w-4" />
+                  <ArrowRightOnRectangleIcon className="h-4 w-4" />
                   Sign out
                 </button>
               </div>
@@ -196,7 +255,7 @@ export function MapUserProfile() {
             className="w-10 h-10 bg-white rounded-full shadow-lg border-2 border-primary hover:shadow-xl transition-all duration-200 flex items-center justify-center"
             title="Sign in to your account"
           >
-            <User className="h-5 w-5 text-gray-600" />
+            <UserIcon className="h-5 w-5 text-gray-600" />
           </Link>
 
           {/* Hover login text - positioned sideways (left) */}

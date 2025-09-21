@@ -12,37 +12,30 @@
   "categories": ["food", "travel", "lifestyle"],
   "icons": [
     {
-      "src": "/icon-192x192.png",
+      "src": "/google-maps-logo.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable any"
     },
     {
-      "src": "/icon-512x512.png",
+      "src": "/google-maps-logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable any"
     },
     {
-      "src": "/apple-touch-icon.png",
+      "src": "/google-maps-logo.png",
       "sizes": "180x180",
       "type": "image/png"
     }
   ],
   "screenshots": [
     {
-      "src": "/screenshot-wide.png",
+      "src": "/screenshot.png",
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
       "label": "Amala Discovery Map View"
-    },
-    {
-      "src": "/screenshot-narrow.png",
-      "sizes": "750x1334",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Mobile Amala Discovery"
     }
   ],
   "shortcuts": [
@@ -53,7 +46,7 @@
       "url": "/?action=search",
       "icons": [
         {
-          "src": "/icon-192x192.png",
+          "src": "/google-maps-logo.png",
           "sizes": "192x192"
         }
       ]
@@ -65,7 +58,7 @@
       "url": "/?action=add",
       "icons": [
         {
-          "src": "/icon-192x192.png",
+          "src": "/google-maps-logo.png",
           "sizes": "192x192"
         }
       ]

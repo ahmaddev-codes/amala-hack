@@ -33,7 +33,12 @@ export function trackEvent(event: AnalyticsEvent) {
 
 export async function logAnalyticsEvent(eventType: string, locationId?: string, metadata?: Record<string, any>) {
   try {
-    console.log("ANALYTICS SERVER", { eventType, locationId, metadata });
+    // Sanitize metadata to remove undefined values (Firestore doesn't accept undefined)
+    const sanitizedMetadata = metadata ? Object.fromEntries(
+      Object.entries(metadata).filter(([_, value]) => value !== undefined)
+    ) : {};
+    
+    console.log("ANALYTICS SERVER", { eventType, locationId, metadata: sanitizedMetadata });
     const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
     await fetch(`${baseUrl}/api/analytics`, {
       method: "POST",
@@ -41,7 +46,7 @@ export async function logAnalyticsEvent(eventType: string, locationId?: string, 
       body: JSON.stringify({
         event_type: eventType,
         location_id: locationId,
-        metadata,
+        metadata: sanitizedMetadata,
       }),
     }).catch((e) => console.error("Failed to log analytics event", e));
   } catch (error) {

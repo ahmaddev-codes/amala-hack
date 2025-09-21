@@ -2,7 +2,7 @@ import { AmalaLocation, Review } from "@/types/location";
 import puppeteer from "puppeteer";
 import axios from "axios";
 import { randomUUID } from "node:crypto";
-import { PlacesApiNewService } from "./places-api-new";
+import { PlacesApiNewService } from "./places-api";
 
 type Hours = AmalaLocation["hours"];
 
@@ -395,12 +395,37 @@ export class WebScrapingService {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
       );
       await page.goto(scrapeUrl, {
-        waitUntil: "domcontentloaded",
-        timeout: 60000,
+        waitUntil: "networkidle2", // Wait for network to be idle instead of just DOM
+        timeout: 30000, // Reduce timeout to 30 seconds
       });
-      await new Promise((r) => setTimeout(r, 3000));
 
-      const extractedData = await page.evaluate((selectors) => {
+      // Optimized wait for page stability - reduced from 7s to 2s total
+      await WebScrapingService.delay(1500); // Wait 1.5 seconds for any redirects
+
+      // Check if page has navigated to a different URL
+      const finalUrl = page.url();
+      if (finalUrl !== scrapeUrl) {
+        console.log(`🔄 Page redirected from ${scrapeUrl} to ${finalUrl}`);
+      }
+
+      // Minimal additional wait for dynamic content
+      await WebScrapingService.delay(500);
+
+      // Check if page is still valid (not crashed or navigated away)
+      const pageTitle = await page.title().catch(() => "Unknown");
+      if (pageTitle === "Unknown" || !pageTitle) {
+        throw new Error("Page failed to load or navigated away");
+      }
+
+      console.log(`📄 Scraping page: ${pageTitle} (${scrapeUrl})`);
+
+      // Extract data with error handling and timeout
+      let extractedData;
+      try {
+        // Add timeout to prevent hanging on evaluation
+        // Add timeout to prevent hanging on evaluation
+        extractedData = await Promise.race([
+          page.evaluate((selectors) => {
         const results: {
           name?: string;
           address?: string;
@@ -588,228 +613,58 @@ export class WebScrapingService {
         }
 
         return { results, allPrices, allReviews };
-      }, target.selectors);
+          }, target.selectors),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Page evaluation timeout after 30 seconds")), 30000)
+          )
+        ]);
+      } catch (evaluateError) {
+        console.error(`❌ Page evaluation failed for ${scrapeUrl}:`, evaluateError);
+        console.error(`Error details:`, evaluateError instanceof Error ? evaluateError.message : evaluateError);
+
+        // Return empty data instead of crashing
+        extractedData = { results: [], allPrices: [], allReviews: [] };
+      }
 
       await browser.close();
 
-      const { results, allPrices, allReviews } = extractedData;
+      const { results, allPrices, allReviews } = extractedData as {
+        results: any[];
+        allPrices: any[];
+        allReviews: any[];
+      };
 
-      const locations: Partial<AmalaLocation>[] = results.map(
-        (
-          data: {
-            name?: string;
-            address?: string;
-            phone?: string;
-            rating?: string;
-            price?: string;
-            website?: string;
-          },
-          index: number
-        ) => {
-          const priceText = allPrices[index] || data.price || "";
-          const realPrice = WebScrapingService.extractRealPrice(priceText);
-          const locationReviews = allReviews.slice(0, 5).map(
-            (r) =>
-              ({
-                id: randomUUID(),
-                location_id: "", // Set later when inserting to DB
-                author: r.author || "Anonymous",
-                rating: r.rating || 4,
-                text: r.text || "",
-                date_posted: new Date(),
-                status: "approved" as const,
-              } as Review)
-          );
+      const locations: Partial<AmalaLocation>[] = results.map((r: any) => ({
+        name: r.name,
+        address: r.address,
+        phone: r.phone,
+        website: r.website,
+        rating: r.rating,
+        price: WebScrapingService.mapExtractedPrice(r.price),
+        hours: WebScrapingService.generateDefaultHours(),
+      }));
 
-          return {
-            name: data.name || "Unknown",
-            address: data.address || "Lagos, Nigeria",
-            phone: data.phone,
-            rating: data.rating ? parseFloat(data.rating) : undefined,
-            reviewCount: locationReviews.length,
-            reviews: locationReviews,
-            priceInfo: realPrice,
-            priceRange: realPrice
-              ? WebScrapingService.mapToPriceLevel(realPrice)
-              : "$$",
-            description: `Auto-discovered via web scraping from ${target.url}${
-              realPrice ? ` (Price: ${realPrice})` : ""
-            }`,
-            coordinates: { lat: 6.5244, lng: 3.3792 },
-            discoverySource: "web-scraping",
-            sourceUrl: target.url,
-            serviceType: "both",
-            website: data.website,
-            cuisine: ["Nigerian"],
-            isOpenNow: true,
-          };
-        }
-      );
+      for (const location of locations) {
+        const validation = await WebScrapingService.validateDiscoveredLocation(
+          location
+        );
 
-      // Enrich with Google Places API
-      const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-      if (googleApiKey) {
-        const apiKey = googleApiKey;
-        for (let i = 0; i < locations.length; i++) {
-          const loc = locations[i];
-          try {
-            const query = `${loc.name} ${loc.address}`;
-            const placeId = await WebScrapingService.findPlaceId(query, apiKey);
-            if (placeId) {
-              const details = await WebScrapingService.fetchPlaceDetails(
-                placeId,
-                apiKey
-              );
-              if (details) {
-                // Update with Google data (Places API New format)
-                const images = details.photos
-                  ? details.photos.map(
-                      (photo: any) =>
-                        `/api/proxy/google-photo?photoreference=${
-                          photo.name
-                        }&maxwidth=400&locationName=${encodeURIComponent(
-                          details.displayName.text
-                        )}&cuisine=${encodeURIComponent(
-                          (details.types || []).join(",")
-                        )}`
-                    )
-                  : loc.images || [];
-
-                const reviews: Review[] = details.reviews
-                  ? details.reviews?.map((r: any) => ({
-                      id: randomUUID(),
-                      location_id: "",
-                      author: r.authorAttribution?.displayName || "Anonymous",
-                      rating: r.rating || 0,
-                      text: r.text?.text || "",
-                      date_posted: new Date(),
-                      status: "approved" as const,
-                    })).filter((review: any) => review.text.length > 0)
-                  : loc.reviews || [];
-
-                const rating =
-                  details.rating ||
-                  (typeof loc.rating === "number"
-                    ? loc.rating
-                    : typeof loc.rating === "string"
-                    ? parseFloat(loc.rating)
-                    : undefined);
-                const reviewCount =
-                  details.userRatingCount ||
-                  (loc as any).reviewCount ||
-                  reviews.length;
-
-                // Parse opening hours
-                let hours: Hours | undefined;
-                const isOpenNow =
-                  details.regularOpeningHours?.openNow ??
-                  loc.isOpenNow ??
-                  false;
-                if (details.regularOpeningHours?.periods) {
-                  hours = WebScrapingService.parseGoogleHours(
-                    details.regularOpeningHours.periods
-                  );
-                }
-
-                // Service type inference
-                let serviceType = loc.serviceType || "both";
-                if (details.types) {
-                  if (
-                    details.types.includes("meal_takeaway") ||
-                    details.types.includes("meal_delivery")
-                  ) {
-                    serviceType = "takeaway";
-                  } else if (details.types.includes("restaurant")) {
-                    serviceType = "dine-in";
-                  }
-                }
-
-                // Price range - convert to new pricing system
-                const priceLevel = details.priceLevel;
-                let priceMin = loc.priceMin || 150000;
-                let priceMax = loc.priceMax || 400000;
-                const currency = loc.currency || "NGN";
-                let priceInfo = loc.priceInfo || "₦1,500-4,000 per person";
-
-                if (priceLevel !== undefined) {
-                  // Convert Google Places price level to our pricing system
-                  if (priceLevel === "PRICE_LEVEL_FREE") {
-                    priceMin = 0;
-                    priceMax = 0;
-                    priceInfo = "Free";
-                  } else if (priceLevel === "PRICE_LEVEL_INEXPENSIVE") {
-                    priceMin = 50000; // ₦500
-                    priceMax = 150000; // ₦1,500
-                    priceInfo = "₦500-1,500 per person";
-                  } else if (priceLevel === "PRICE_LEVEL_MODERATE") {
-                    priceMin = 150000; // ₦1,500
-                    priceMax = 400000; // ₦4,000
-                    priceInfo = "₦1,500-4,000 per person";
-                  } else if (priceLevel === "PRICE_LEVEL_EXPENSIVE") {
-                    priceMin = 400000; // ₦4,000
-                    priceMax = 800000; // ₦8,000
-                    priceInfo = "₦4,000-8,000 per person";
-                  } else {
-                    priceMin = 800000; // ₦8,000+
-                    priceMax = 1500000; // ₦15,000
-                    priceInfo = "₦8,000-15,000 per person";
-                  }
-                }
-
-                // Coordinates
-                const coordinates = details.location
-                  ? {
-                      lat: details.location.latitude,
-                      lng: details.location.longitude,
-                    }
-                  : loc.coordinates;
-
-                // Phone and website
-                const phone = details.nationalPhoneNumber || loc.phone;
-                const website = details.websiteUri || (loc as any).website;
-
-                // Description
-                const description =
-                  loc.description ||
-                  `Auto-discovered via web scraping from ${target.url}`;
-
-                locations[i] = {
-                  ...loc,
-                  images,
-                  reviews,
-                  rating,
-                  reviewCount,
-                  hours,
-                  isOpenNow,
-                  serviceType,
-                  priceMin,
-                  priceMax,
-                  currency,
-                  priceInfo,
-                  coordinates,
-                  phone,
-                  website,
-                  description,
-                };
-              }
-            }
-          } catch (enrichError) {
-            console.warn(`Failed to enrich location ${loc.name}:`, enrichError);
-            // Keep original scraped data
-          }
+        if (validation.isValid) {
+          // In production, save to database with 'pending' status
+        } else {
+          console.log(`Skipping invalid location: ${location.name}`);
         }
       }
 
-      return locations.filter(
-        (loc) =>
-          loc.name &&
-          (loc.name.toLowerCase().includes("amala") ||
-            loc.name.toLowerCase().includes("restaurant"))
-      );
+      return locations;
     } catch (error) {
       console.error(`❌ Scraping failed for ${target.url}:`, error);
       return [];
     }
+  }
+
+  private static delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private static async findPlaceId(
@@ -978,11 +833,50 @@ export class WebScrapingService {
     };
   }
 
+  // Optimized parallel discovery method
+  static async discoverLocationsParallel(maxConcurrent: number = 3): Promise<Partial<AmalaLocation>[]> {
+    const allLocations: Partial<AmalaLocation>[] = [];
+    const targets = this.SCRAPING_TARGETS.slice(0, 5); // Limit to first 5 targets for performance
+    
+    // Process targets in batches to avoid overwhelming the system
+    for (let i = 0; i < targets.length; i += maxConcurrent) {
+      const batch = targets.slice(i, i + maxConcurrent);
+      
+      const batchPromises = batch.map(async (target) => {
+        try {
+          console.log(`🔍 Starting parallel scrape of ${target.url}`);
+          return await this.scrapeSpecificSite(target);
+        } catch (error) {
+          console.error(`❌ Failed to scrape ${target.url}:`, error);
+          return [];
+        }
+      });
+      
+      const batchResults = await Promise.allSettled(batchPromises);
+      
+      batchResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          allLocations.push(...result.value);
+        } else {
+          console.error(`❌ Batch item ${i + index} failed:`, result.reason);
+        }
+      });
+      
+      // Small delay between batches to be respectful to servers
+      if (i + maxConcurrent < targets.length) {
+        await this.delay(1000);
+      }
+    }
+    
+    return allLocations;
+  }
+
   static async scheduledDiscovery(): Promise<void> {
     // This would be called by a cron job or scheduled function
 
     try {
-      const discovered = await this.discoverLocations();
+      // Use parallel discovery for better performance
+      const discovered = await this.discoverLocationsParallel(2); // Use 2 concurrent requests
 
       for (const location of discovered) {
         const validation = await this.validateDiscoveredLocation(location);

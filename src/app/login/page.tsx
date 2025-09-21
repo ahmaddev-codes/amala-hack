@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/FirebaseAuthContext";
+import { useToast } from "@/contexts/ToastContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,12 +15,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  LocationOn as MapPin,
-  Mail,
-  Lock,
-  Visibility as Eye,
-  VisibilityOff as EyeOff,
-} from "@mui/icons-material";
+  MapPinIcon,
+  EnvelopeIcon,
+  LockClosedIcon,
+  EyeIcon,
+  EyeSlashIcon,
+  UserIcon
+} from "@heroicons/react/24/outline";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -31,6 +34,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const router = useRouter();
   const { signIn, signUp, signInWithGoogle, user, isLoading: authLoading } = useAuth();
+  const { success, error: showErrorToast, warning, info } = useToast();
 
   // Auto-redirect to map if authenticated
   useEffect(() => {
@@ -75,12 +79,34 @@ export default function LoginPage() {
 
   const handleGoogleAuth = async () => {
     setIsLoading(true);
+    setError(""); // Clear any previous errors
+    
     try {
       const result = await signInWithGoogle();
-      if (result.error) throw new Error(result.error);
-      // With popup auth, the user will be signed in immediately
-      // The useEffect will handle the redirect to the map
+      if (result.error) {
+        // Show user-friendly error message
+        if (result.error.includes("popup")) {
+          showErrorToast(
+            "Please allow popups for this site and try again, or check your browser settings.",
+            "Popup Blocked"
+          );
+        } else if (result.error.includes("network")) {
+          showErrorToast(
+            "Please check your internet connection and try again.",
+            "Network Error"
+          );
+        } else {
+          showErrorToast(result.error, "Sign-in Error");
+        }
+        throw new Error(result.error);
+      }
+      
+      // Success or redirect in progress
+      console.log("🔄 Google auth initiated successfully");
+      info("Signing you in with Google...", "Please Wait");
+      
     } catch (error: any) {
+      console.error("❌ Google auth error:", error);
       setError(error.message);
       setIsLoading(false);
     }
@@ -108,9 +134,8 @@ export default function LoginPage() {
         <div className="flex-1 flex items-center justify-center p-12">
           <div className="w-full max-w-md">
             <div className="text-center mb-8">
-              <div className="flex items-center justify-center gap-2 mb-6">
-                <MapPin className="h-10 w-10 text-primary" />
-                <h1 className="text-3xl font-bold text-gray-900">Amala Map</h1>
+              <div className="flex items-center justify-center mb-6">
+                <BrandLogo size="lg" variant="full" />
               </div>
               <h2 className="text-2xl font-semibold mb-3">
                 {isSignUp ? "Create Account" : "Welcome Back"}
@@ -146,14 +171,14 @@ export default function LoginPage() {
                   Email
                 </Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                  <EnvelopeIcon className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <Input
                     id="email"
                     type="email"
                     placeholder="Enter your email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-12 h-12 text-base"
+                    className="pl-10"
                     required
                   />
                 </div>
@@ -163,14 +188,14 @@ export default function LoginPage() {
                   Password
                 </Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                  <LockClosedIcon className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <Input
                     id="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-12 pr-12 h-12 text-base"
+                    className="pl-10 pr-10"
                     required
                   />
                   <button
@@ -179,9 +204,9 @@ export default function LoginPage() {
                     className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                   >
                     {showPassword ? (
-                      <EyeOff className="h-5 w-5" />
+                      <EyeSlashIcon className="h-4 w-4" />
                     ) : (
-                      <Eye className="h-5 w-5" />
+                      <EyeIcon className="h-4 w-4" />
                     )}
                   </button>
                 </div>
@@ -193,7 +218,7 @@ export default function LoginPage() {
               )}
               <Button
                 type="submit"
-                className="w-full h-12 text-base font-medium"
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white"
                 disabled={isLoading}
               >
                 {isLoading ? "Loading..." : isSignUp ? "Sign Up" : "Sign In"}
@@ -216,7 +241,7 @@ export default function LoginPage() {
               variant="outline"
               onClick={handleGoogleAuth}
               disabled={isLoading}
-              className="w-full h-12 text-base font-medium mt-4"
+              className="w-full mt-4 border-orange-200 text-orange-700 hover:bg-orange-50"
             >
               <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
                 <path
@@ -240,15 +265,19 @@ export default function LoginPage() {
             </Button>
 
             <div className="text-center text-sm mt-6">
-              <button
-                type="button"
-                onClick={() => setIsSignUp(!isSignUp)}
-                className="text-primary hover:underline font-medium"
-              >
-                {isSignUp
-                  ? "Already have an account? Sign in"
-                  : "Don't have an account? Sign up"}
-              </button>
+              <p className="text-center text-sm text-gray-600">
+                {isSignUp ? "Already have an account?" : "Don't have an account?"}
+                <button
+                  type="button"
+                  className="ml-1 text-orange-600 hover:text-orange-700 font-medium transition-colors"
+                  onClick={() => {
+                    setIsSignUp(!isSignUp);
+                    setError("");
+                  }}
+                >
+                  {isSignUp ? "Sign in" : "Sign up"}
+                </button>
+              </p>
             </div>
           </div>
         </div>
@@ -257,39 +286,40 @@ export default function LoginPage() {
       {/* Mobile Layout */}
       <div className="lg:hidden w-full">
         <Card className="w-full max-w-md mx-auto">
-          <CardHeader className="text-center">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <MapPin className="h-8 w-8 text-primary" />
-              <h1 className="text-2xl font-bold text-gray-900">Amala Map</h1>
+          <CardHeader className="space-y-1">
+            <div className="flex items-center justify-center mb-4">
+              <BrandLogo size="lg" variant="full" />
             </div>
-            <CardTitle>
-              {isSignUp ? "Create Account" : "Welcome Back"}
-            </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-center text-gray-600">
               {isSignUp
-                ? "Sign up to submit reviews and discover new Amala spots"
-                : "Sign in to your account to continue"}
+                ? "Create your account to start discovering amazing Amala spots"
+                : "Sign in to discover the best Amala restaurants worldwide"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <form onSubmit={handleAuth} className="space-y-4">
               {isSignUp && (
                 <div className="space-y-2">
-                  <Label htmlFor="name-mobile">Name</Label>
-                  <Input
-                    id="name-mobile"
-                    type="text"
-                    placeholder="Enter your name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
+                  <Label htmlFor="name">Full Name</Label>
+                  <div className="relative">
+                    <UserIcon className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <Input
+                      id="name"
+                      type="text"
+                      placeholder="Enter your full name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                      disabled={isLoading}
+                      className="pl-10"
+                    />
+                  </div>
                 </div>
               )}
               <div className="space-y-2">
                 <Label htmlFor="email-mobile">Email</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <EnvelopeIcon className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <Input
                     id="email-mobile"
                     type="email"
@@ -304,7 +334,7 @@ export default function LoginPage() {
               <div className="space-y-2">
                 <Label htmlFor="password-mobile">Password</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <LockClosedIcon className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <Input
                     id="password-mobile"
                     type={showPassword ? "text" : "password"}
@@ -320,9 +350,9 @@ export default function LoginPage() {
                     className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                   >
                     {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
+                      <EyeSlashIcon className="h-4 w-4" />
                     ) : (
-                      <Eye className="h-4 w-4" />
+                      <EyeIcon className="h-4 w-4" />
                     )}
                   </button>
                 </div>
@@ -332,7 +362,7 @@ export default function LoginPage() {
                   {error}
                 </div>
               )}
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white" disabled={isLoading}>
                 {isLoading ? "Loading..." : isSignUp ? "Sign Up" : "Sign In"}
               </Button>
             </form>
@@ -353,7 +383,7 @@ export default function LoginPage() {
               variant="outline"
               onClick={handleGoogleAuth}
               disabled={isLoading}
-              className="w-full"
+              className="w-full border-orange-200 text-orange-700 hover:bg-orange-50"
             >
               <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
                 <path
@@ -377,15 +407,16 @@ export default function LoginPage() {
             </Button>
 
             <div className="text-center text-sm">
-              <button
-                type="button"
-                onClick={() => setIsSignUp(!isSignUp)}
-                className="text-primary hover:underline"
-              >
-                {isSignUp
-                  ? "Already have an account? Sign in"
-                  : "Don't have an account? Sign up"}
-              </button>
+              <p className="text-gray-600">
+                {isSignUp ? "Already have an account?" : "Don't have an account?"}
+                <button
+                  type="button"
+                  onClick={() => setIsSignUp(!isSignUp)}
+                  className="ml-1 text-orange-600 hover:text-orange-700 font-medium transition-colors"
+                >
+                  {isSignUp ? "Sign in" : "Sign up"}
+                </button>
+              </p>
             </div>
           </CardContent>
         </Card>

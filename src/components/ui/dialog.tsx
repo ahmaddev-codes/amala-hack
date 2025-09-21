@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Close as XIcon } from "@mui/icons-material";
+import { XMarkIcon as XIcon } from "@heroicons/react/24/outline";
 
 import { cn } from "@/lib/utils";
 

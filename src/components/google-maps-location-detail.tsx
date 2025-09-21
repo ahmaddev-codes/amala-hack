@@ -3,25 +3,28 @@
 import React, { useState } from "react";
 import { AmalaLocation } from "@/types/location";
 import {
-  Star,
-  Phone,
-  Globe,
-  MapPin,
-  Clock,
-  Share as ShareIcon,
-  Bookmark,
-  Camera,
-  Navigation as Directions,
-  MoreHorizontal,
-  X,
-  ThumbsUp,
-  ThumbsDown,
-  ArrowUpDown as Sort,
-  SlidersHorizontal as Filter,
-  ChevronLeft,
-  ChevronRight,
-  Plus as Add,
-} from "lucide-react";
+  StarIcon as Star,
+  PhoneIcon as Phone,
+  GlobeAltIcon as Globe,
+  MapPinIcon as MapPin,
+  ClockIcon as Clock,
+  ShareIcon,
+  BookmarkIcon as Bookmark,
+  CameraIcon as Camera,
+  ArrowTopRightOnSquareIcon as Directions,
+  EllipsisHorizontalIcon as MoreHorizontal,
+  XMarkIcon as X,
+  HandThumbUpIcon as ThumbsUp,
+  HandThumbDownIcon as ThumbsDown,
+  ArrowsUpDownIcon as Sort,
+  AdjustmentsHorizontalIcon as Filter,
+  ChevronLeftIcon as ChevronLeft,
+  ChevronRightIcon as ChevronRight,
+  PlusIcon as Add,
+  HeartIcon as Heart,
+  CurrencyDollarIcon as DollarSign,
+  ChatBubbleLeftIcon as RateReview,
+} from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -29,6 +32,7 @@ import Image from "next/image";
 import { useAuth } from "@/contexts/FirebaseAuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { ReviewSubmission } from "./review-submission";
+import { trackEvent } from "@/lib/utils";
 
 interface GoogleMapsLocationDetailProps {
   location: AmalaLocation;
@@ -37,6 +41,8 @@ interface GoogleMapsLocationDetailProps {
   onCall?: () => void;
   onShare?: () => void;
   onSave?: () => void;
+  compact?: boolean;
+  variant?: 'full' | 'compact'; // New prop to support both layouts
 }
 
 export function GoogleMapsLocationDetail({
@@ -46,6 +52,8 @@ export function GoogleMapsLocationDetail({
   onCall,
   onShare,
   onSave,
+  compact = false,
+  variant = 'full',
 }: GoogleMapsLocationDetailProps) {
   const { user, isLoading } = useAuth();
   const { success, error, info } = useToast();
@@ -56,6 +64,55 @@ export function GoogleMapsLocationDetail({
   const [reviewSort, setReviewSort] = useState("newest");
   const [reviewFilter, setReviewFilter] = useState("all");
   const [showReviewForm, setShowReviewForm] = useState(false);
+
+  // Enhanced action handlers from LocationInfoWindow
+  const shareLocationWithDirections = (location: AmalaLocation) => {
+    if (navigator.share) {
+      navigator.share({
+        title: location.name,
+        text: `Check out ${location.name} - ${location.description || 'Great Amala restaurant'}`,
+        url: `${window.location.origin}/?location=${location.id}`,
+      }).catch(console.error);
+    } else {
+      // Fallback: copy to clipboard
+      const shareText = `${location.name}\n${location.address}\n${window.location.origin}/?location=${location.id}`;
+      navigator.clipboard.writeText(shareText).then(() => {
+        info('Location details copied to clipboard!', 'Shared');
+      }).catch(() => {
+        info('Unable to share location', 'Share Failed');
+      });
+    }
+  };
+
+  const handleDirections = () => {
+    if (typeof window !== "undefined") {
+      info(
+        `Directions to ${location.name}\n\n${location.address}\n\nIn a production app, this would show turn-by-turn directions within the map.`,
+        "Directions"
+      );
+    }
+    onDirections?.();
+    trackEvent({ type: "directions_clicked", id: location.id });
+  };
+
+  const handleCall = () => {
+    if (location.phone && typeof window !== "undefined") {
+      window.open(`tel:${location.phone}`);
+    }
+    onCall?.();
+  };
+
+  const handleWebsite = () => {
+    if (location.website && typeof window !== "undefined") {
+      window.open(location.website, "_blank");
+    }
+  };
+
+  const handleShare = () => {
+    shareLocationWithDirections(location);
+    onShare?.();
+    trackEvent({ type: "place_viewed", id: location.id });
+  };
 
   // Format price display locally without server-side service
   const formatPrice = (min: number, max: number, currency: string = "USD") => {
@@ -124,14 +181,14 @@ export function GoogleMapsLocationDetail({
       {/* Action Buttons Row */}
       <div className="grid grid-cols-3 gap-3">
         <Button
-          onClick={onDirections}
+          onClick={handleDirections}
           className="flex flex-col items-center gap-1 h-auto p-3 bg-primary hover:bg-primary/90 text-primary-foreground"
         >
           <Directions className="w-5 h-5" />
           <span className="text-xs">Directions</span>
         </Button>
         <Button
-          onClick={onCall}
+          onClick={handleCall}
           variant="outline"
           className="flex flex-col items-center gap-1 h-auto p-3"
           disabled={!location.phone}
@@ -140,7 +197,7 @@ export function GoogleMapsLocationDetail({
           <span className="text-xs">Call</span>
         </Button>
         <Button
-          onClick={onShare}
+          onClick={handleShare}
           variant="outline"
           className="flex flex-col items-center gap-1 h-auto p-3"
         >
@@ -186,14 +243,12 @@ export function GoogleMapsLocationDetail({
         {location.website && (
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Globe className="w-4 h-4" />
-            <a
-              href={location.website}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={handleWebsite}
               className="text-primary hover:underline"
             >
               Visit website
-            </a>
+            </button>
           </div>
         )}
       </div>
@@ -382,6 +437,7 @@ export function GoogleMapsLocationDetail({
                 alt={`Photo ${index + 1}`}
                 fill
                 className="object-cover"
+                unoptimized
                 onError={(e) => {
                   console.log("Photo failed to load:", e.currentTarget.src);
                   e.currentTarget.src = "/placeholder-image.svg";
@@ -495,28 +551,30 @@ export function GoogleMapsLocationDetail({
     </div>
   );
 
-  return (
-    <div className="h-full flex flex-col bg-white overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b flex-shrink-0">
-        <button
-          onClick={onClose}
-          className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={onSave}>
-            <Bookmark className="w-4 h-4" />
-          </Button>
-          <Button variant="outline" size="sm">
-            <MoreHorizontal className="w-4 h-4" />
-          </Button>
+  const renderFullLayout = () => (
+    <div className="h-full bg-white overflow-y-auto">
+      {/* Header - Sticky */}
+      <div className="sticky top-0 z-10 bg-white border-b">
+        <div className="flex items-center justify-between p-4">
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={onSave}>
+              <Bookmark className="w-4 h-4" />
+            </Button>
+            <Button variant="outline" size="sm">
+              <MoreHorizontal className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Hero Image */}
-      <div className="relative h-48 flex-shrink-0">
+      <div className="relative h-48">
         <Image
           src={
             images.length > 0 && images[currentImageIndex]
@@ -528,6 +586,7 @@ export function GoogleMapsLocationDetail({
           alt={location.name}
           fill
           className="object-cover"
+          unoptimized
           onError={(e) => {
             console.log("Image failed to load:", e.currentTarget.src);
             e.currentTarget.src = "/placeholder-image.svg";
@@ -573,7 +632,7 @@ export function GoogleMapsLocationDetail({
       </div>
 
       {/* Location Info */}
-      <div className="p-4 border-b flex-shrink-0">
+      <div className="p-4 border-b">
         <h1 className="text-xl font-semibold text-gray-900 mb-2">
           {location.name}
         </h1>
@@ -624,14 +683,12 @@ export function GoogleMapsLocationDetail({
         </div>
       </div>
 
-      {/* Tab Content */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <div className="p-4">
-          {activeTab === "overview" && renderOverview()}
-          {activeTab === "reviews" && renderReviews()}
-          {activeTab === "photos" && renderPhotos()}
-          {activeTab === "about" && renderAbout()}
-        </div>
+      {/* Tab Content - All content flows together */}
+      <div className="p-4">
+        {activeTab === "overview" && renderOverview()}
+        {activeTab === "reviews" && renderReviews()}
+        {activeTab === "photos" && renderPhotos()}
+        {activeTab === "about" && renderAbout()}
       </div>
 
       {/* Review Form Modal */}
@@ -652,4 +709,373 @@ export function GoogleMapsLocationDetail({
       )}
     </div>
   );
+
+  // Compact layout for info windows and mobile bottom sheets
+  const renderCompactLayout = () => (
+    <div className="w-80 max-w-sm">
+      {/* Header Image */}
+      <div className="relative h-32 bg-gradient-to-br from-orange-400 to-red-500 rounded-t-lg overflow-hidden">
+        {location.images && location.images.length > 0 ? (
+          <Image
+            src={location.images[0]}
+            alt={location.name}
+            className="w-full h-full object-cover"
+            fill
+            unoptimized
+            onError={(e) => {
+              // Hide the image and show the fallback icon on error
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+            }}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <Camera className="w-8 h-8 text-white opacity-60" />
+          </div>
+        )}
+
+        {/* Status badge */}
+        <div className="absolute top-2 right-2">
+          <div
+            className={`px-2 py-1 rounded-full text-xs font-medium ${
+              location.isOpenNow
+                ? "bg-green-500 text-white"
+                : "bg-red-500 text-white"
+            }`}
+          >
+            {location.isOpenNow ? "Open" : "Closed"}
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="p-4 bg-white rounded-b-lg">
+        {/* Title and Rating */}
+        <div className="mb-3">
+          <h3 className="font-semibold text-gray-900 text-lg mb-1">
+            {location.name}
+          </h3>
+
+          {location.rating && (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    className={`w-4 h-4 ${
+                      i < Math.floor(location.rating!)
+                        ? "fill-yellow-400 text-yellow-400"
+                        : "text-gray-300"
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="text-sm text-gray-600">
+                {location.rating} ({location.reviewCount || reviews.length} reviews)
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Price and Service Type */}
+        <div className="flex items-center gap-4 mb-3 text-sm">
+          <div className="flex items-center gap-1">
+            <DollarSign className="w-4 h-4 text-green-600" />
+            <span className="font-medium">
+              {location.priceInfo || "Price not available"}
+            </span>
+          </div>
+          <span className="text-gray-400">•</span>
+          <span className="text-gray-600 capitalize">
+            {location.serviceType?.replace("-", " ") || "Restaurant"}
+          </span>
+        </div>
+
+        {/* Cuisine Tags */}
+        {location.cuisine && location.cuisine.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-3">
+            {location.cuisine.slice(0, 3).map((cuisine) => (
+              <span
+                key={cuisine}
+                className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded-full"
+              >
+                {cuisine}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Description */}
+        {location.description && (
+          <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+            {location.description}
+          </p>
+        )}
+
+        {/* Address */}
+        <div className="flex items-start gap-2 mb-3">
+          <MapPin className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+          <span className="text-sm text-gray-600">{location.address}</span>
+        </div>
+
+        {/* Contact Info */}
+        <div className="space-y-2 mb-4">
+          {location.phone && (
+            <button
+              onClick={handleCall}
+              className="flex items-center gap-2 text-sm text-primary hover:text-primary"
+            >
+              <Phone className="w-4 h-4" />
+              <span>{location.phone}</span>
+            </button>
+          )}
+
+          {location.website && (
+            <button
+              onClick={handleWebsite}
+              className="flex items-center gap-2 text-sm text-primary hover:text-primary"
+            >
+              <Globe className="w-4 h-4" />
+              <span>Visit website</span>
+            </button>
+          )}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-2 mb-3">
+          <button
+            onClick={handleDirections}
+            className="flex-1 bg-primary hover:bg-primary text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            <Directions className="w-4 h-4" />
+            Directions
+          </button>
+
+          <button
+            onClick={handleShare}
+            className="px-3 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
+            title="Share"
+          >
+            <ShareIcon className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={onSave}
+            className="px-3 py-2 border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
+            title="Save"
+          >
+            <Heart className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Write Review Button */}
+        {!isLoading && user && (
+          <button
+            onClick={() => setShowReviewForm(true)}
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-3"
+          >
+            <RateReview className="w-4 h-4" />
+            Write a Review
+          </button>
+        )}
+
+        {/* Hours (if available) */}
+        {location.hours && (
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <div className="flex items-center gap-2 text-sm">
+              <Clock className="w-4 h-4 text-gray-400" />
+              <span className="text-gray-600">
+                {location.isOpenNow ? "Open now" : "Closed"}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Review Form Modal */}
+      {showReviewForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <ReviewSubmission
+            location={location}
+            onSubmitted={() => {
+              setShowReviewForm(false);
+              success("Review submitted successfully!", "Thank you for your feedback");
+            }}
+            onCancel={() => setShowReviewForm(false)}
+          />
+        </div>
+      )}
+    </div>
+  );
+
+  // Return compact or full layout based on variant prop
+  if (variant === 'compact' || compact) {
+    return renderCompactLayout();
+  }
+
+  return renderFullLayout();
+}
+
+// Helper function to create HTML content for Google Maps InfoWindow
+export function createInfoWindowContent(location: AmalaLocation): string {
+  const ratingStars = location.rating
+    ? Array.from({ length: 5 }, (_, i) =>
+        i < Math.floor(location.rating!) ? "★" : "☆"
+      ).join("")
+    : "";
+
+  const reviewsPreview =
+    location.reviews && location.reviews.length > 0
+      ? `
+      <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8eaed;">
+        <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #202124;">Recent Reviews</h4>
+        ${location.reviews
+          .slice(0, 2)
+          .map(
+            (review) => `
+          <div style="margin-bottom: 8px; padding: 8px; background: #f8f9fa; border-radius: 8px; font-size: 12px;">
+            <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+              <span style="color: #fbbc04;">${"★".repeat(
+                review.rating
+              )}${"☆".repeat(5 - review.rating)}</span>
+              <span style="color: #5f6368;">by ${review.author}</span>
+            </div>
+            <p style="margin: 0; color: #5f6368; line-height: 1.3;">${
+              review.text
+            }</p>
+          </div>
+        `
+          )
+          .join("")}
+        ${
+          location.reviews.length > 2
+            ? `<p style="margin: 4px 0 0 0; text-align: center; font-size: 12px; color: #5f6368;">... and ${
+                location.reviews.length - 2
+              } more</p>`
+            : ""
+        }
+      </div>
+    `
+      : "";
+
+  const hoursPreview = location.hours
+    ? `
+      <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8eaed;">
+        <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #202124;">Hours</h4>
+        <div style="font-size: 12px; color: #5f6368;">
+          ${Object.entries(location.hours)
+            .slice(0, 3)
+            .map(
+              ([day, hours]) => `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span style="text-transform: capitalize;">${day}</span>
+              <span>${hours.open} - ${hours.close}</span>
+            </div>
+          `
+            )
+            .join("")}
+          ${
+            Object.keys(location.hours).length > 3
+              ? '<p style="margin: 4px 0 0 0; text-align: center; font-size: 12px; color: #5f6368;">... view all</p>'
+              : ""
+          }
+        </div>
+      </div>
+    `
+    : "";
+
+  const websiteButton = location.website
+    ? `
+      <a href="${location.website}" target="_blank"
+         style="border: 1px solid #dadce0; color: #1a73e8; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 14px; display: inline-block; margin-top: 8px;">
+        Website
+      </a>
+    `
+    : "";
+
+  return `
+    <div style="width: 320px; max-height: 400px; overflow-y: auto; font-family: 'Google Sans', sans-serif; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+      <div style="padding: 16px;">
+        <h3 style="margin: 0 0 8px 0; font-size: 18px; font-weight: 600; color: #202124;">
+          ${location.name}
+        </h3>
+        
+        ${
+          location.rating
+            ? `
+          <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 8px;">
+            <span style="color: #fbbc04; font-size: 16px;">${ratingStars}</span>
+            <span style="font-size: 14px; color: #5f6368;">${location.rating} (${location.reviewCount})</span>
+          </div>
+        `
+            : ""
+        }
+        
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px;">
+          <span style="font-weight: 500; color: #137333;">${
+            location.priceInfo || "Price not available"
+          }</span>
+          <span style="color: #5f6368;">•</span>
+          <span style="color: #5f6368; text-transform: capitalize;">${(location.serviceType || "restaurant").replace(
+            "-",
+            " "
+          )}</span>
+        </div>
+        
+        <div style="margin-bottom: 8px;">
+          ${(location.cuisine || [])
+            .slice(0, 3)
+            .map(
+              (cuisine) =>
+                `<span style="display: inline-block; padding: 4px 8px; background: #f1f3f4; color: #5f6368; border-radius: 12px; font-size: 12px; margin-right: 4px;">${cuisine}</span>`
+            )
+            .join("")}
+        </div>
+        
+        ${
+          location.description
+            ? `
+          <p style="margin: 8px 0; font-size: 14px; color: #5f6368; line-height: 1.4;">
+            ${location.description}
+          </p>
+        `
+            : ""
+        }
+        
+        <div style="margin: 8px 0; font-size: 14px; color: #5f6368;">
+          📍 ${location.address}
+        </div>
+        
+        <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
+          <a href="https://www.google.com/maps/dir/?api=1&destination=${
+            location.coordinates.lat
+          },${location.coordinates.lng}"
+             target="_blank"
+             style="background: #1a73e8; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;">
+            Directions
+          </a>
+          ${
+            location.phone
+              ? `
+            <a href="tel:${location.phone}"
+               style="border: 1px solid #dadce0; color: #1a73e8; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 14px;">
+              Call
+            </a>
+          `
+              : ""
+          }
+          ${websiteButton}
+        </div>
+        
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8eaed; font-size: 12px; color: #5f6368;">
+          <span style="display: inline-flex; align-items: center; gap: 4px;">
+            🕒 ${location.isOpenNow ? "Open now" : "Closed"}
+          </span>
+        </div>
+
+        ${hoursPreview}
+        ${reviewsPreview}
+      </div>
+    </div>
+  `;
 }

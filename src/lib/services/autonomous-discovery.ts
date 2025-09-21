@@ -1,8 +1,9 @@
 import { AmalaLocation, Review } from "@/types/location";
 import axios from "axios";
 import crypto from "crypto";
-import { PlacesApiNewService } from "./places-api-new";
+import { PlacesApiNewService } from "./places-api";
 import { WebScrapingService } from "./scraping-service";
+import { EnhancedScrapingService, ScrapingTarget } from "./enhanced-scraping-service";
 
 export interface DiscoverySource {
   name: string;
@@ -11,23 +12,24 @@ export interface DiscoverySource {
   searchQueries: string[];
 }
 
-export interface ScrapingTarget {
-  url: string;
-  type: "blog" | "directory" | "social" | "review-site";
-  selectors: {
-    name?: string;
-    address?: string;
-    phone?: string;
-    rating?: string;
-  };
+export interface RegionalBatch {
+  name: string;
+  continent: string;
+  countries: string[];
+  states?: { [countryCode: string]: string[] };
+  searchQueries: string[];
 }
 
 export class AutonomousDiscoveryService {
-  // Regional batching for global discovery
-  private static readonly REGIONAL_BATCHES = [
+  private static readonly REGIONAL_BATCHES: RegionalBatch[] = [
     {
       name: "Americas",
-      countries: ["US", "CA", "BR", "MX", "AR"],
+      continent: "North America",
+      countries: ["US", "CA", "BR", "MX", "AR", "CO", "VE", "PE"],
+      states: {
+        "US": ["NY", "CA", "TX", "FL", "IL", "GA", "MD", "VA", "NJ", "MA"],
+        "CA": ["ON", "BC", "AB", "QC"]
+      },
       searchQueries: [
         "amala restaurant",
         "nigerian food",
@@ -35,11 +37,18 @@ export class AutonomousDiscoveryService {
         "yoruba food",
         "african restaurant",
         "nigerian diaspora restaurant",
+        "best amala near me",
+        "authentic nigerian food"
       ],
     },
     {
       name: "Europe", 
-      countries: ["GB", "DE", "FR", "IT", "ES", "NL"],
+      continent: "Europe",
+      countries: ["GB", "DE", "FR", "IT", "ES", "NL", "BE", "SE", "NO", "DK"],
+      states: {
+        "GB": ["London", "Manchester", "Birmingham", "Liverpool", "Leeds"],
+        "DE": ["Berlin", "Hamburg", "Munich", "Cologne", "Frankfurt"]
+      },
       searchQueries: [
         "amala restaurant",
         "nigerian food",
@@ -47,11 +56,18 @@ export class AutonomousDiscoveryService {
         "african cuisine",
         "yoruba restaurant",
         "nigerian diaspora food",
+        "authentic amala",
+        "traditional yoruba cuisine"
       ],
     },
     {
       name: "Africa",
-      countries: ["NG", "GH", "SN", "CI", "KE", "ZA"],
+      continent: "Africa",
+      countries: ["NG", "GH", "SN", "CI", "KE", "ZA", "BF", "ML", "NE", "TD"],
+      states: {
+        "NG": ["Lagos", "Oyo", "Ogun", "Osun", "Ondo", "Ekiti", "Kwara", "FCT"],
+        "GH": ["Greater Accra", "Ashanti", "Western", "Central"]
+      },
       searchQueries: [
         "amala bukka",
         "best amala",
@@ -61,11 +77,18 @@ export class AutonomousDiscoveryService {
         "amala restaurant",
         "local amala spot",
         "authentic amala",
+        "amala joint",
+        "mama put amala"
       ],
     },
     {
       name: "Asia-Pacific",
-      countries: ["AU", "SG", "MY", "JP", "IN"],
+      continent: "Asia",
+      countries: ["AU", "SG", "MY", "JP", "IN", "TH", "PH", "ID", "VN", "KR"],
+      states: {
+        "AU": ["NSW", "VIC", "QLD", "WA", "SA"],
+        "IN": ["Maharashtra", "Delhi", "Karnataka", "Tamil Nadu", "Gujarat"]
+      },
       searchQueries: [
         "nigerian restaurant",
         "west african food",
@@ -73,6 +96,26 @@ export class AutonomousDiscoveryService {
         "african cuisine",
         "yoruba food",
         "nigerian diaspora restaurant",
+        "authentic african food",
+        "traditional nigerian cuisine"
+      ],
+    },
+    {
+      name: "Middle East",
+      continent: "Asia",
+      countries: ["AE", "SA", "QA", "KW", "BH", "OM", "JO", "LB"],
+      states: {
+        "AE": ["Dubai", "Abu Dhabi", "Sharjah", "Ajman"],
+        "SA": ["Riyadh", "Jeddah", "Dammam", "Mecca"]
+      },
+      searchQueries: [
+        "nigerian restaurant",
+        "west african cuisine",
+        "amala restaurant",
+        "african food",
+        "yoruba restaurant",
+        "halal nigerian food",
+        "authentic west african"
       ],
     },
   ];
@@ -172,38 +215,59 @@ export class AutonomousDiscoveryService {
    * Main autonomous discovery method with regional batching
    * Searches multiple sources for Amala locations and returns validated results
    */
-  static async discoverLocations(region?: string): Promise<AmalaLocation[]> {
+  static async discoverLocations(region?: string, country?: string, state?: string): Promise<Partial<AmalaLocation>[]> {
     try {
       const allDiscoveredLocations: Partial<AmalaLocation>[] = [];
 
-      // Determine which regions to search
-      const regionsToSearch = region 
-        ? this.REGIONAL_BATCHES.filter(batch => batch.name.toLowerCase() === region.toLowerCase())
-        : this.REGIONAL_BATCHES;
+      // Determine which regions to search based on filters
+      let regionsToSearch = this.REGIONAL_BATCHES;
+      
+      if (region) {
+        regionsToSearch = this.REGIONAL_BATCHES.filter(batch => 
+          batch.name.toLowerCase() === region.toLowerCase() ||
+          batch.continent?.toLowerCase() === region.toLowerCase()
+        );
+      }
+      
+      if (country) {
+        regionsToSearch = regionsToSearch.filter(batch => 
+          batch.countries.some(c => c.toLowerCase() === country.toLowerCase())
+        );
+      }
+      
+      if (state && country) {
+        regionsToSearch = regionsToSearch.filter(batch => {
+          const countryStates = batch.states?.[country.toUpperCase()];
+          return countryStates?.some((s: string) => s.toLowerCase().includes(state.toLowerCase()));
+        });
+      }
 
-      console.log(`🌍 Starting discovery for regions: ${regionsToSearch.map(r => r.name).join(', ')}`);
+      const locationFilter = region || country || state;
+      console.log(`🔍 Starting autonomous discovery${locationFilter ? ` for ${region ? 'region: ' + region : ''}${country ? 'country: ' + country : ''}${state ? 'state: ' + state : ''}` : ' globally'}...`);
+      
+      const allDiscovered: Partial<AmalaLocation>[] = [];
 
       for (const regionalBatch of regionsToSearch) {
         console.log(`🔍 Discovering locations in ${regionalBatch.name}...`);
 
         // 1. API-based discovery for this region
-        const apiLocations = await this.discoverFromAPIsRegional(regionalBatch);
-        allDiscoveredLocations.push(...apiLocations);
+        const apiLocations = await this.discoverFromAPIsRegional(regionalBatch, country, state);
+        allDiscovered.push(...apiLocations);
 
         // 2. Web scraping discovery for this region
         const scrapedLocations = await this.discoverFromWebScraping();
-        allDiscoveredLocations.push(...scrapedLocations);
+        allDiscovered.push(...scrapedLocations);
 
         // 3. Social media discovery for this region
         const socialLocations = await this.discoverFromSocialMedia();
-        allDiscoveredLocations.push(...socialLocations);
+        allDiscovered.push(...socialLocations);
 
         console.log(`✅ Found ${apiLocations.length} locations in ${regionalBatch.name}`);
       }
 
       // 4. Process and validate discoveries
       const processedLocations = await this.processDiscoveries(
-        allDiscoveredLocations
+        allDiscovered
       );
       
       console.log(`🎉 Total processed locations: ${processedLocations.length}`);
@@ -217,16 +281,69 @@ export class AutonomousDiscoveryService {
   /**
    * Discover locations using Google Places API (New) and other APIs
    */
-  private static async fetchPlaceDetails(placeId: string, apiKey: string): Promise<any> {
+  private static async searchGooglePlaces(query: string, countryCode?: string, stateOrCity?: string): Promise<AmalaLocation[]> {
     // Use Places API (New) service instead of direct API calls
-    return await PlacesApiNewService.getPlaceDetails(placeId, apiKey);
+    const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!googleApiKey) {
+      console.log('⚠️ Google API key not found, skipping API discovery');
+      return [];
+    }
+
+    let searchQuery = query;
+    if (stateOrCity && countryCode) {
+      searchQuery += ` in ${stateOrCity}, ${countryCode}`;
+    } else if (countryCode) {
+      searchQuery += ` country:${countryCode}`;
+    }
+
+    const searchResults = await PlacesApiNewService.textSearch(searchQuery, googleApiKey);
+    const locations: AmalaLocation[] = [];
+
+    for (const place of searchResults) {
+      const details = await PlacesApiNewService.getPlaceDetails(place.id, googleApiKey);
+      if (details) {
+        const partialLocation = PlacesApiNewService.convertToAmalaLocation(details);
+        
+        // Create a complete AmalaLocation with required fields
+        const location: AmalaLocation = {
+          id: crypto.randomUUID(),
+          name: partialLocation.name || 'Unknown Restaurant',
+          address: partialLocation.address || 'Unknown Address',
+          coordinates: partialLocation.coordinates || { lat: 0, lng: 0 },
+          cuisine: partialLocation.cuisine || ['Nigerian'],
+          dietary: [],
+          features: [],
+          description: partialLocation.description || '',
+          phone: partialLocation.phone || '',
+          website: partialLocation.website || '',
+          rating: partialLocation.rating || 0,
+          reviewCount: partialLocation.reviewCount || 0,
+          priceRange: partialLocation.priceRange || '$$',
+          hours: partialLocation.hours || {},
+          images: partialLocation.images || [],
+          reviews: partialLocation.reviews || [],
+          isOpenNow: partialLocation.isOpenNow || false,
+          serviceType: partialLocation.serviceType || 'dine-in',
+          discoverySource: "google-places-api",
+          sourceUrl: `https://maps.google.com/place/${place.id}`,
+          submittedAt: new Date(),
+          status: 'pending',
+          country: countryCode || 'Unknown',
+          city: stateOrCity || 'Unknown',
+        };
+        
+        locations.push(location);
+      }
+    }
+
+    return locations;
   }
 
   /**
    * Regional API discovery using specific search queries for each region
    */
-  static async discoverFromAPIsRegional(regionalBatch: any): Promise<Partial<AmalaLocation>[]> {
-    const locations: Partial<AmalaLocation>[] = [];
+  static async discoverFromAPIsRegional(regionalBatch: RegionalBatch, country?: string, state?: string): Promise<AmalaLocation[]> {
+    const locations: AmalaLocation[] = [];
 
     try {
       const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -235,32 +352,35 @@ export class AutonomousDiscoveryService {
         return locations;
       }
 
-      // Use region-specific search queries
-      for (const query of regionalBatch.searchQueries) {
-        console.log(`🔍 Searching for "${query}" in ${regionalBatch.name}...`);
-        
-        try {
-          // Use text search without location bias for global results
-          const searchResults = await PlacesApiNewService.textSearch(query, googleApiKey);
-          
-          for (const place of searchResults.slice(0, 5)) { // Limit to 5 per query
-            const details = await PlacesApiNewService.getPlaceDetails(place.id, googleApiKey);
-            if (details) {
-              const location = PlacesApiNewService.convertToAmalaLocation(details);
-              location.discoverySource = "google-places-api";
-              location.sourceUrl = `https://maps.google.com/place/${place.id}`;
-              locations.push(location);
-            }
+      // Use region-specific search queries with geographic targeting
+      const searchQueries = regionalBatch.searchQueries;
+      const targetCountries = country ? [country.toUpperCase()] : regionalBatch.countries;
+        const targetStates = state && country ? regionalBatch.states?.[country.toUpperCase()]?.filter((s: string) => 
+        s.toLowerCase().includes(state.toLowerCase())
+      ) : undefined;
+      
+      for (const query of searchQueries) {
+        for (const targetCountry of targetCountries) {
+          try {
+            const locationContext = targetStates ? 
+              `${query} in ${targetStates.join(', ')}, ${targetCountry}` : 
+              `${query} in ${targetCountry}`;
+            
+            // Perform Google Places API search for this query
+            const foundLocations = await this.searchGooglePlaces(
+              query,
+              targetCountry,
+              targetStates?.[0] || undefined
+            );
+            
+            locations.push(...foundLocations);
+            
+            console.log(`    ✅ Found ${foundLocations.length} locations for "${locationContext}"`, foundLocations.length > 0 ? foundLocations.slice(0, 2).map(l => l.name) : '');
+          } catch (error) {
+            console.error(`    ❌ Error searching "${query}" in ${targetCountry}:`, error);
           }
-          
-          // Add delay to respect rate limits
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (queryError) {
-          console.error(`❌ Error searching for "${query}":`, queryError);
         }
       }
-
-      console.log(`✅ Regional API discovery found ${locations.length} locations in ${regionalBatch.name}`);
     } catch (error) {
       console.error('❌ Regional API discovery error:', error);
     }
@@ -360,7 +480,7 @@ export class AutonomousDiscoveryService {
 
               if (places.length > 0) {
                 for (const place of places.slice(0, 6)) { // limit per region per query
-                  const details = await this.fetchPlaceDetails(place.id, googleApiKey);
+                  const details = await PlacesApiNewService.getPlaceDetails(place.id, googleApiKey);
                   if (!details) continue;
 
                   const images = details.photos ? details.photos.map((photo: any) =>
@@ -390,7 +510,7 @@ export class AutonomousDiscoveryService {
                     reviewCount: details.userRatingCount,
                     images,
                     reviews,
-                    priceRange: this.mapPriceLevel(details.priceLevel),
+                    priceRange: this.mapPriceLevel(typeof details.priceLevel === 'string' ? parseInt(details.priceLevel) : details.priceLevel),
                     isOpenNow: details.regularOpeningHours?.openNow ?? false,
                     discoverySource: "google-places-api",
                     sourceUrl: `https://maps.google.com/place/${place.id}`,
@@ -411,14 +531,100 @@ export class AutonomousDiscoveryService {
   }
 
   /**
-   * Discover locations through web scraping
+   * Discover locations through enhanced web scraping with fallbacks
    */
   static async discoverFromWebScraping(): Promise<Partial<AmalaLocation>[]> {
-    const scraped = await WebScrapingService.discoverLocations();
-    return scraped.map(loc => ({
-      ...loc,
-      discoverySource: 'web-scraping',
-    })) as Partial<AmalaLocation>[];
+    console.log('🔍 Starting enhanced web scraping discovery...');
+    
+    // Define scraping targets with enhanced configuration
+    const scrapingTargets: ScrapingTarget[] = [
+      {
+        url: 'https://www.nairaland.com/search',
+        type: 'directory',
+        searchQueries: ['amala restaurant lagos', 'amala spot nigeria', 'best amala place'],
+        selectors: {
+          name: '.post-title, .thread-title, h3',
+          address: '.location, .address',
+        },
+        fallbackStrategy: 'alternative-scraper'
+      },
+      {
+        url: 'https://www.pulse.ng/lifestyle/food-travel-arts',
+        type: 'blog',
+        searchQueries: ['amala restaurant', 'nigerian food spots'],
+        selectors: {
+          name: 'h1, h2, .article-title',
+          address: '.location, .venue',
+        },
+        fallbackStrategy: 'api'
+      },
+      {
+        url: 'https://www.tripadvisor.com/Restaurants',
+        type: 'review-site',
+        searchQueries: ['amala', 'nigerian restaurant'],
+        selectors: {
+          name: '.restaurant-name, h3',
+          address: '.address, .location',
+          rating: '.rating, .stars',
+        },
+        fallbackStrategy: 'alternative-scraper'
+      },
+      {
+        url: 'https://www.jumia.com.ng/restaurants',
+        type: 'directory',
+        searchQueries: ['amala'],
+        selectors: {
+          name: '.restaurant-name, .name',
+          address: '.address',
+          phone: '.phone',
+        },
+        fallbackStrategy: 'skip'
+      }
+    ];
+
+    try {
+      // Use enhanced scraping service with multiple fallback strategies
+      const results = await EnhancedScrapingService.scrapeMultipleTargets(scrapingTargets, 2);
+      
+      const allLocations: Partial<AmalaLocation>[] = [];
+      
+      results.forEach(result => {
+        if (result.success && result.locations.length > 0) {
+          console.log(`✅ Successfully scraped ${result.locations.length} locations from ${result.source} using ${result.strategy} strategy`);
+          
+          const processedLocations = result.locations.map(loc => ({
+            ...loc,
+            discoverySource: 'web-scraping' as const,
+            sourceUrl: result.source,
+            description: `[Auto-discovered via enhanced scraping from ${result.source} using ${result.strategy} strategy]`,
+          }));
+          
+          allLocations.push(...processedLocations);
+        } else {
+          console.log(`❌ Failed to scrape from ${result.source}: ${result.error}`);
+        }
+      });
+
+      console.log(`🎯 Enhanced scraping completed: ${allLocations.length} total locations discovered`);
+      return allLocations;
+      
+    } catch (error) {
+      console.error('❌ Enhanced web scraping failed:', error);
+      
+      // Fallback to original scraping service
+      console.log('🔄 Falling back to original scraping service...');
+      try {
+        const scraped = await WebScrapingService.discoverLocationsParallel(2);
+        return scraped.map(loc => ({
+          ...loc,
+          discoverySource: 'web-scraping' as const,
+          sourceUrl: loc.sourceUrl || 'scraped-content',
+        }));
+      } catch (fallbackError) {
+        console.error('❌ Fallback scraping also failed:', fallbackError);
+        return [];
+      }
+    }
   }
 
   /**

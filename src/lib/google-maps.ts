@@ -43,32 +43,28 @@ export const amalaMapStyles: MapStyles[] = [
 // Load Google Maps API
 export const loadGoogleMaps = (config: GoogleMapsConfig): Promise<void> => {
   return new Promise((resolve, reject) => {
-    // Check if already loaded
-    if (window.google && window.google.maps) {
-      resolve();
-      return;
-    }
-
-    // Check if script is already loading
+    // Force reload if API key has changed - remove existing script and reload
     const existingScript = document.querySelector(
       'script[src*="maps.googleapis.com"]'
     );
     if (existingScript) {
-      // Wait for it to load
-      const checkLoaded = () => {
-        if (window.google && window.google.maps) {
-          resolve();
-        } else {
-          setTimeout(checkLoaded, 100);
-        }
-      };
-      checkLoaded();
-      return;
+      // Remove existing script to force reload with new API key
+      existingScript.remove();
+      // Clear Google Maps from window to force fresh load
+      if (window.google) {
+        delete (window as any).google;
+      }
+      if ((window as any).initMap) {
+        delete (window as any).initMap;
+      }
     }
     const script = document.createElement("script");
     const libraries = config.libraries?.join(",") || "places,geometry";
 
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${config.apiKey}&libraries=${libraries}&loading=async&v=weekly&callback=initMap`;
+    // Add cache-busting timestamp and version to force fresh load
+    const timestamp = Date.now();
+    const version = `3.${Math.floor(timestamp / 1000)}`; // Create unique version
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${config.apiKey}&libraries=${libraries}&loading=async&v=${version}&callback=initMap&_t=${timestamp}&_cache_bust=${config.apiKey.slice(-8)}`;
     script.async = true;
     script.defer = true;
 

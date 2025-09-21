@@ -76,6 +76,7 @@ export const LocationSubmissionSchema = z.object({
     cuisine: z.array(z.string().min(1).max(50))
         .min(1, "At least one cuisine type is required")
         .max(10, "Maximum 10 cuisine types allowed")
+        .default(["Nigerian"])
         .transform((arr) => arr.map(c => c.trim().toLowerCase())),
     dietary: z.array(z.enum(["vegan", "vegetarian", "gluten-free", "halal", "kosher"]))
         .default([]),

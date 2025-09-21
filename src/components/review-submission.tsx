@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import Image from "next/image";
 import { useAuth } from "@/contexts/FirebaseAuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { Star, CloudUpload, X } from "@mui/icons-material";
+import { StarIcon, CloudArrowUpIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { StarIcon as StarSolidIcon } from "@heroicons/react/24/solid";
 import { AmalaLocation } from "@/types/location";
 
 interface ReviewSubmissionProps {
@@ -206,7 +207,7 @@ export function ReviewSubmission({
             onClick={onCancel}
             className="text-gray-500 hover:text-gray-700"
           >
-            <X />
+            <XMarkIcon className="w-5 h-5" />
           </button>
         )}
       </div>
@@ -227,13 +228,11 @@ export function ReviewSubmission({
                 onMouseLeave={() => setHoverRating(0)}
                 className="text-2xl focus:outline-none"
               >
-                <Star
-                  className={`${
-                    star <= (hoverRating || rating)
-                      ? "text-yellow-400"
-                      : "text-gray-300"
-                  } transition-colors`}
-                />
+                {star <= (hoverRating || rating) ? (
+                  <StarSolidIcon className="w-6 h-6 text-yellow-400 transition-colors" />
+                ) : (
+                  <StarIcon className="w-6 h-6 text-gray-300 transition-colors" />
+                )}
               </button>
             ))}
           </div>
@@ -275,7 +274,7 @@ export function ReviewSubmission({
                 id="image-upload"
               />
               <label htmlFor="image-upload" className="cursor-pointer">
-                <CloudUpload className="mx-auto text-gray-400 mb-2" />
+                <CloudArrowUpIcon className="w-8 h-8 mx-auto text-gray-400 mb-2" />
                 <div className="text-sm text-gray-600">
                   Click to upload photos ({images.length}/5)
                 </div>
@@ -300,7 +299,7 @@ export function ReviewSubmission({
                     onClick={() => removeImage(index)}
                     className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"
                   >
-                    <X className="w-4 h-4" />
+                    <XMarkIcon className="w-4 h-4" />
                   </button>
                 </div>
               ))}

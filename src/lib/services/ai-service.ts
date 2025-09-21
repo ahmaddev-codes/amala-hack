@@ -26,7 +26,7 @@ export interface AIExtractionResult {
   searchResults?: Partial<AmalaLocation>[];
 }
 
-export class EnhancedAILocationService {
+export class AILocationService {
   static async extractLocationInfo(
     userMessage: string,
     conversationHistory: ConversationMessage[] = []
@@ -37,7 +37,7 @@ export class EnhancedAILocationService {
     }
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
 
       const prompt = `
 You are an advanced AI assistant specialized in helping users add authentic Amala restaurants to a global directory.
@@ -73,10 +73,6 @@ OUTPUT FORMAT: Return ONLY valid JSON:
     "phone": "phone number if mentioned or empty",
     "website": "website URL if mentioned or empty",
     "description": "description if mentioned or empty",
-    "serviceType": "dine-in|takeaway|both or empty",
-    "priceMin": 0,
-    "priceMax": 0, 
-    "currency": "NGN|USD|GBP|CAD or based on location",
     "priceInfo": "Human readable price range or empty",
     "cuisine": ["Nigerian", "other cuisines mentioned"],
     "city": "city name extracted from address",
@@ -285,11 +281,13 @@ SMART SUGGESTIONS:
       melbourne: { city: "Melbourne", country: "Australia", region: "Oceania" },
     };
 
-    // Check extracted info first
-    if (extractedInfo.city) {
-      const cityKey = extractedInfo.city.toLowerCase();
-      if (globalCities[cityKey]) {
-        return globalCities[cityKey];
+    // Check extracted info first - look for city in address
+    if (extractedInfo.address) {
+      const addressLower = extractedInfo.address.toLowerCase();
+      for (const [cityKey, cityInfo] of Object.entries(globalCities)) {
+        if (addressLower.includes(cityKey)) {
+          return cityInfo;
+        }
       }
     }
 
@@ -353,7 +351,7 @@ SMART SUGGESTIONS:
           `   📍 ${loc.address}\n` +
           `   📞 ${loc.phone || "Phone not available"}\n` +
           `   🌐 ${loc.website || "Website not available"}\n` +
-          `   💰 ${priceStr} • ${loc.serviceType || "Dine-in & Takeaway"}\n` +
+          `   💰 ${priceStr} • Dine-in & Takeaway\n` +
           `   🍽️ ${cuisineStr}\n` +
           `   📝 ${
             loc.description?.substring(0, 80) || "Traditional Amala restaurant"
@@ -414,10 +412,6 @@ SMART SUGGESTIONS:
       return {
         extracted: {
           name: `Selected Restaurant ${choiceNum}`,
-          serviceType: "both",
-          priceMin: 150000,
-          priceMax: 400000,
-          currency: "NGN",
           priceInfo: "₦1,500-4,000 per person",
           cuisine: ["Nigerian"],
         },
@@ -450,9 +444,9 @@ SMART SUGGESTIONS:
     }
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
 
-      const essentialFields = ["name", "address", "serviceType", "priceInfo"];
+      const essentialFields = ["name", "address", "priceInfo"];
       const missingEssentials = essentialFields.filter(
         (field) => !extractedInfo[field as keyof LocationSubmission]
       );
@@ -494,10 +488,7 @@ Return only the question text, no JSON.`;
     if (!extractedInfo.address) {
       return "Great! What's the full address including the city and country?";
     }
-    if (!extractedInfo.serviceType) {
-      return "Do they offer dine-in, takeaway, or both?";
-    }
-    if (!extractedInfo.priceInfo && !extractedInfo.priceMin) {
+    if (!extractedInfo.priceInfo) {
       return "What's the typical price range? ($, $$, $$$, or $$$$)";
     }
 
@@ -583,10 +574,6 @@ Return only the question text, no JSON.`;
   static fallbackExtraction(message: string): AIExtractionResult {
     const extracted: Partial<LocationSubmission> = {
       cuisine: ["Nigerian"],
-      serviceType: "both",
-      priceMin: 150000,
-      priceMax: 400000,
-      currency: "NGN",
       priceInfo: "₦1,500-4,000 per person",
     };
 
@@ -679,6 +666,3 @@ Return only the question text, no JSON.`;
     return generic.some((phrase) => text.includes(phrase));
   }
 }
-
-// Backward compatibility export
-export const AILocationService = EnhancedAILocationService;

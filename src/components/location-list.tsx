@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { LocationOn as MapPin } from "@mui/icons-material";
+import { MapPinIcon as MapPin } from "@heroicons/react/24/outline";
 import { IoStar, IoStarHalf, IoStarOutline } from "react-icons/io5";
 import { AmalaLocation } from "@/types/location";
 

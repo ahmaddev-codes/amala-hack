@@ -2,20 +2,20 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  ExpandLess as ChevronUp,
-  ExpandMore as ChevronDown,
-  Close as X,
-  Phone,
-  Language as Globe,
-  Star,
-  AccessTime as Clock,
-  LocationOn as MapPin,
-  Navigation,
-  Share,
-  Favorite as Heart,
-} from "@mui/icons-material";
+  ChevronUpIcon as ChevronUp,
+  ChevronDownIcon as ChevronDown,
+  XMarkIcon as X,
+  PhoneIcon as Phone,
+  GlobeAltIcon as Globe,
+  StarIcon as Star,
+  ClockIcon as Clock,
+  MapPinIcon as MapPin,
+  ArrowTopRightOnSquareIcon as Navigation,
+  ShareIcon as Share,
+  HeartIcon as Heart,
+} from "@heroicons/react/24/outline";
 import { AmalaLocation } from "@/types/location";
-import { LocationInfoWindow } from "./location-info-window";
+import { GoogleMapsLocationDetail } from "./google-maps-location-detail";
 
 interface MobileBottomSheetProps {
   locations: AmalaLocation[];
@@ -354,14 +354,13 @@ export function MobileBottomSheet({
           {sheetState === "expanded" && (
             <div className="h-full overflow-y-auto">
               {selectedLocation ? (
-                <div className="p-4">
-                  <LocationInfoWindow
-                    location={selectedLocation}
-                    onDirections={() => {}}
-                    onShare={() => {}}
-                    onSave={() => {}}
-                  />
-                </div>
+                <GoogleMapsLocationDetail
+                  location={selectedLocation}
+                  variant="compact"
+                  onDirections={() => {}}
+                  onShare={() => {}}
+                  onSave={() => {}}
+                />
               ) : (
                 <div className="divide-y divide-gray-100">
                   {locations.map((location) => (

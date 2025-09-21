@@ -1,11 +1,11 @@
 "use client";
 
 import {
-  Warning as AlertTriangle,
-  LocationOn as MapPin,
-  Phone,
-  OpenInNew as ExternalLink,
-} from "@mui/icons-material";
+  ExclamationTriangleIcon as AlertTriangle,
+  MapPinIcon as MapPin,
+  PhoneIcon as Phone,
+  ArrowTopRightOnSquareIcon as ExternalLink,
+} from "@heroicons/react/24/outline";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

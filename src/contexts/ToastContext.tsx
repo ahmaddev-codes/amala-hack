@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useRef } from "react";
 
 export interface Toast {
   id: string;
@@ -8,10 +8,7 @@ export interface Toast {
   message: string;
   type: "success" | "error" | "warning" | "info";
   duration?: number;
-  action?: {
-    label: string;
-    onClick: () => void;
-  };
+  isExiting?: boolean;
 }
 
 interface ToastContextType {
@@ -19,7 +16,6 @@ interface ToastContextType {
   showToast: (toast: Omit<Toast, "id">) => void;
   hideToast: (id: string) => void;
   clearAllToasts: () => void;
-  // Convenience methods
   success: (message: string, title?: string, duration?: number) => void;
   error: (message: string, title?: string, duration?: number) => void;
   warning: (message: string, title?: string, duration?: number) => void;
@@ -36,41 +32,59 @@ export function useToast() {
   return context;
 }
 
-interface ToastProviderProps {
-  children: React.ReactNode;
-}
-
-export function ToastProvider({ children }: ToastProviderProps) {
+export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const timeoutRefs = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
+  const hideToast = useCallback((id: string) => {
+    // Clear any existing timeout
+    const existingTimeout = timeoutRefs.current.get(id);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      timeoutRefs.current.delete(id);
+    }
+
+    // Start exit animation
+    setToasts((prev) => 
+      prev.map((toast) => 
+        toast.id === id ? { ...toast, isExiting: true } : toast
+      )
+    );
+
+    // Remove from DOM after animation completes
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    }, 300); // Match animation duration
+  }, []);
 
   const showToast = useCallback((toast: Omit<Toast, "id">) => {
-    const id =
-      Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const duration = toast.duration || (toast.type === 'error' ? 8000 : 6000);
+    
     const newToast: Toast = {
       id,
-      duration: 5000, // Default 5 seconds
+      duration,
+      isExiting: false,
       ...toast,
     };
 
     setToasts((prev) => [...prev, newToast]);
 
-    // Auto-hide toast after duration
-    if (newToast.duration && newToast.duration > 0) {
-      setTimeout(() => {
-        hideToast(id);
-      }, newToast.duration);
-    }
-  }, []);
-
-  const hideToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  }, []);
+    // Auto-remove after duration
+    const timeoutId = setTimeout(() => {
+      hideToast(id);
+    }, duration);
+    
+    timeoutRefs.current.set(id, timeoutId);
+  }, [hideToast]);
 
   const clearAllToasts = useCallback(() => {
+    // Clear all timeouts
+    timeoutRefs.current.forEach((timeout) => clearTimeout(timeout));
+    timeoutRefs.current.clear();
     setToasts([]);
   }, []);
 
-  // Convenience methods
   const success = useCallback(
     (message: string, title?: string, duration?: number) => {
       showToast({ message, title, type: "success", duration });
@@ -80,7 +94,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
 
   const error = useCallback(
     (message: string, title?: string, duration?: number) => {
-      showToast({ message, title, type: "error", duration: duration || 7000 }); // Errors stay longer
+      showToast({ message, title, type: "error", duration });
     },
     [showToast]
   );
@@ -99,18 +113,20 @@ export function ToastProvider({ children }: ToastProviderProps) {
     [showToast]
   );
 
-  const value: ToastContextType = {
-    toasts,
-    showToast,
-    hideToast,
-    clearAllToasts,
-    success,
-    error,
-    warning,
-    info,
-  };
-
   return (
-    <ToastContext.Provider value={value}>{children}</ToastContext.Provider>
+    <ToastContext.Provider
+      value={{
+        toasts,
+        showToast,
+        hideToast,
+        clearAllToasts,
+        success,
+        error,
+        warning,
+        info,
+      }}
+    >
+      {children}
+    </ToastContext.Provider>
   );
 }

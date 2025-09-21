@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import {
-  Sync,
-  CheckCircle,
-  Error,
-  Schedule,
-  Refresh,
-} from "@mui/icons-material";
+  ArrowPathIcon as Sync,
+  CheckCircleIcon as CheckCircle,
+  ExclamationCircleIcon as Error,
+  ClockIcon as Schedule,
+  ArrowPathIcon as Refresh,
+} from "@heroicons/react/24/outline";
 
 interface EnrichmentStatus {
   locationId: string;
@@ -145,7 +145,8 @@ export function EnrichmentManager() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="h-full overflow-y-auto">
+      <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">
           Location Enrichment Manager
@@ -257,5 +258,6 @@ export function EnrichmentManager() {
         </ul>
       </div>
     </div>
+  </div>
   );
 }
