@@ -1,9 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbOperations } from "@/lib/database/supabase";
+import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
+import { requireRole, verifyBearerToken } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const pendingLocations = await dbOperations.getPendingLocations();
+    const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
+    if (!authResult.success) {
+      return NextResponse.json({ success: false, error: authResult.error }, { status: 401 });
+    }
+    
+    const roleCheck = requireRole(authResult.user!, ["mod", "admin"]);
+    if (!roleCheck.success) {
+      return NextResponse.json({ success: false, error: roleCheck.error }, { status: 403 });
+    }
+    
+    const pendingLocations = await adminFirebaseOperations.getPendingLocations();
 
     return NextResponse.json({
       success: true,
@@ -21,6 +32,16 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
+    if (!authResult.success) {
+      return NextResponse.json({ success: false, error: authResult.error }, { status: 401 });
+    }
+    
+    const roleCheck = requireRole(authResult.user!, ["mod", "admin"]);
+    if (!roleCheck.success) {
+      return NextResponse.json({ success: false, error: roleCheck.error }, { status: 403 });
+    }
+    
     const { locationId, action, moderatorId } = await request.json();
 
     if (!locationId || !action) {
@@ -37,11 +58,49 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const moderatedLocation = await dbOperations.moderateLocation(
+    console.log(`🔄 Moderating location ${locationId}: ${action}`);
+    const moderatedLocation = await adminFirebaseOperations.moderateLocation(
       locationId,
-      action,
-      moderatorId
+      action as "approve" | "reject",
+      moderatorId || authResult.user!.id
     );
+    console.log(`✅ Location ${locationId} ${action}d successfully`);
+
+    // Log analytics with scout tracking
+    try {
+      await fetch("/api/analytics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          event_type: action === "approve" ? "mod_approve" : "mod_reject", 
+          location_id: locationId, 
+          metadata: { 
+            moderator: moderatorId || authResult.user!.email || authResult.user!.id,
+            submittedBy: moderatedLocation.submittedBy, // Track original submitter for scout stats
+            action: action
+          } 
+        }),
+      });
+
+      // Additional scout-specific analytics if location was user-submitted
+      if (moderatedLocation.submittedBy && moderatedLocation.discoverySource === "user-submitted") {
+        await fetch("/api/analytics", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            event_type: action === "approve" ? "scout_submission_approved" : "scout_submission_rejected", 
+            location_id: locationId, 
+            metadata: { 
+              scout: moderatedLocation.submittedBy,
+              locationName: moderatedLocation.name,
+              moderator: moderatorId || authResult.user!.email || authResult.user!.id
+            } 
+          }),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to log analytics:", error);
+    }
 
     return NextResponse.json({
       success: true,
@@ -49,9 +108,13 @@ export async function POST(request: NextRequest) {
       message: `Location ${action}d successfully`,
     });
   } catch (error) {
-    console.error("Moderation failed:", error);
+    console.error("❌ Moderation error:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to moderate location" },
+      { 
+        success: false, 
+        error: "Failed to moderate location",
+        details: error instanceof Error ? error.message : "Unknown error"
+      },
       { status: 500 }
     );
   }

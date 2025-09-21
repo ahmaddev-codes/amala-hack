@@ -2,20 +2,20 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  ChevronUp,
-  ChevronDown,
-  X,
-  Phone,
-  Globe,
-  Star,
-  Clock,
-  MapPin,
-  Navigation,
-  Share,
-  Heart,
-} from "lucide-react";
+  ChevronUpIcon as ChevronUp,
+  ChevronDownIcon as ChevronDown,
+  XMarkIcon as X,
+  PhoneIcon as Phone,
+  GlobeAltIcon as Globe,
+  StarIcon as Star,
+  ClockIcon as Clock,
+  MapPinIcon as MapPin,
+  ArrowTopRightOnSquareIcon as Navigation,
+  ShareIcon as Share,
+  HeartIcon as Heart,
+} from "@heroicons/react/24/outline";
 import { AmalaLocation } from "@/types/location";
-import { LocationInfoWindow } from "./location-info-window";
+import { GoogleMapsLocationDetail } from "./google-maps-location-detail";
 
 interface MobileBottomSheetProps {
   locations: AmalaLocation[];
@@ -273,7 +273,7 @@ export function MobileBottomSheet({
                           4.5 (234 reviews)
                         </span>
                         <span className="text-sm font-medium text-gray-800">
-                          {selectedLocation.priceRange}
+                          {selectedLocation.priceInfo || "Pricing available"}
                         </span>
                       </div>
                     </div>
@@ -354,14 +354,13 @@ export function MobileBottomSheet({
           {sheetState === "expanded" && (
             <div className="h-full overflow-y-auto">
               {selectedLocation ? (
-                <div className="p-4">
-                  <LocationInfoWindow
-                    location={selectedLocation}
-                    onDirections={() => {}}
-                    onShare={() => {}}
-                    onSave={() => {}}
-                  />
-                </div>
+                <GoogleMapsLocationDetail
+                  location={selectedLocation}
+                  variant="compact"
+                  onDirections={() => {}}
+                  onShare={() => {}}
+                  onSave={() => {}}
+                />
               ) : (
                 <div className="divide-y divide-gray-100">
                   {locations.map((location) => (
@@ -393,7 +392,7 @@ export function MobileBottomSheet({
                             <span className="text-xs text-gray-600">4.3</span>
                             <span className="text-xs text-gray-400">•</span>
                             <span className="text-xs font-medium text-gray-800">
-                              {location.priceRange}
+                              {location.priceInfo || "Pricing available"}
                             </span>
                             <span className="text-xs text-gray-400">•</span>
                             <span className="text-xs text-gray-600 capitalize">

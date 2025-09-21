@@ -1,6 +1,11 @@
 "use client";
 
-import { AlertTriangle, MapPin, Phone, ExternalLink } from "lucide-react";
+import {
+  ExclamationTriangleIcon as AlertTriangle,
+  MapPinIcon as MapPin,
+  PhoneIcon as Phone,
+  ArrowTopRightOnSquareIcon as ExternalLink,
+} from "@heroicons/react/24/outline";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -82,7 +87,7 @@ export function DuplicateWarning({
 
               <div className="flex items-center gap-2 mt-2">
                 <span className="text-xs font-medium">
-                  {location.priceRange}
+                  {location.priceInfo || "Price not available"}
                 </span>
                 <span className="text-xs text-gray-400">•</span>
                 <span className="text-xs capitalize">

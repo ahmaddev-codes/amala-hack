@@ -1,14 +1,70 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { AutonomousDiscoveryService } from "@/lib/services/autonomous-discovery";
-import { dbOperations } from "@/lib/database/supabase";
+import { PlacesApiNewService } from "@/lib/services/places-api";
+import { BatchedPlacesApiService } from "@/lib/services/places-api-batch";
+import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
 import axios from "axios";
 import crypto from "crypto";
+import { rateLimit, requireRole, verifyBearerToken } from "@/lib/auth";
+import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
 
-export async function POST() {
+// Analytics logging helper function
+async function logAnalyticsEvent(eventType: string, metadata: any = {}) {
   try {
-    // Trigger autonomous discovery from multiple sources
-    const discoveredLocations =
-      await AutonomousDiscoveryService.discoverLocations();
+    const analyticsRef = collection(db, 'analytics_events');
+    await addDoc(analyticsRef, {
+      event_type: eventType,
+      metadata,
+      created_at: Timestamp.now(),
+      createdAt: Timestamp.now(),
+    });
+  } catch (error) {
+    console.error('Failed to log analytics event:', error);
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+    
+    const roleCheck = requireRole(authResult.user, ["mod", "admin"]);
+    if (!roleCheck.success) {
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    }
+    // Feature flag: discovery jobs
+    const enabled = (process.env.FEATURE_DISCOVERY_ENABLED || "false").toLowerCase() === "true";
+    if (!enabled) {
+      return NextResponse.json({ success: false, error: "Discovery is disabled by feature flag" }, { status: 503 });
+    }
+    // Rate limit discovery triggers
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    const rl = rateLimit(`discovery:post:${ip}`, 5, 60_000);
+    if (!rl.allowed) {
+      return NextResponse.json({ success: false, error: "Rate limit exceeded. Try again later." }, { status: 429 });
+    }
+    // Get geographic parameters from request body
+    const body = await request.json().catch(() => ({}));
+    const { region, country, state, continent } = body;
+
+    // Log discovery session start
+    await logAnalyticsEvent('discovery_started', {
+      region: region || continent,
+      country,
+      state,
+      user: authResult.user.email,
+      timestamp: new Date().toISOString()
+    });
+
+    // Trigger autonomous discovery from multiple sources with geographic targeting
+    const discoveredLocations = await AutonomousDiscoveryService.discoverLocations(
+      region || continent, 
+      country, 
+      state
+    );
 
     // Save discovered locations to database with 'pending' status
     const savedLocations = [];
@@ -17,26 +73,18 @@ export async function POST() {
 
     for (const location of discoveredLocations) {
       try {
-        // Check for duplicates by name and address similarity
-        const existingLocations = await dbOperations.getLocations();
-        const isDuplicate = existingLocations.some(
-          (existing) => {
-            const nameSim = AutonomousDiscoveryService.calculateSimilarity(
-              location.name.toLowerCase().trim(),
-              existing.name.toLowerCase().trim()
-            );
-            const addrSim = location.address
-              ? AutonomousDiscoveryService.calculateSimilarity(
-                  location.address.toLowerCase().trim(),
-                  existing.address.toLowerCase().trim()
-                )
-              : 0;
-            return nameSim > 0.7 || addrSim > 0.85;
-          }
+        // PERFORMANCE OPTIMIZATION: Use database query instead of loading all locations
+        const similarLocations = await adminFirebaseOperations.findSimilarLocations(
+          location.name || "",
+          location.address || "",
+          0.7
         );
+        const isDuplicate = similarLocations.length > 0;
 
         if (isDuplicate) {
           skippedDuplicates.push(location.name);
+          // Log duplicate event (Firebase analytics would go here)
+          console.log(`Skipped duplicate: ${location.name}`);
           continue;
         }
 
@@ -45,56 +93,53 @@ export async function POST() {
         let enrichedLocation = { ...location };
 
         if (googleApiKey && location.address) {
-          const placeId = await findPlaceId(location.address, googleApiKey);
+          // PERFORMANCE: Use batched API service for better caching and rate limiting
+          const placeId = await BatchedPlacesApiService.findPlaceId(location.address, googleApiKey);
           if (placeId) {
-            const details = await fetchPlaceDetails(placeId, googleApiKey);
+            const details = await BatchedPlacesApiService.getPlaceDetails(placeId, googleApiKey);
             if (details) {
-              // Generate images
+              // Convert to AmalaLocation format using the new service
+              const convertedLocation = PlacesApiNewService.convertToAmalaLocation(details);
+              
+              // Generate images with proper photo names
               const images = details.photos ? details.photos.map((photo: any) =>
-                `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photo.photo_reference}&key=${googleApiKey}`
+                `/api/proxy/google-photo?photoreference=${photo.name}&maxwidth=400&locationName=${encodeURIComponent(details.displayName.text)}&cuisine=${encodeURIComponent((details.types || []).join(','))}`
               ) : [];
 
               // Reviews
               const reviews = details.reviews ? details.reviews.slice(0, 5).map((r: any) => ({
                 id: crypto.randomUUID(),
                 location_id: '', // Set after insert
-                author: r.author_name,
-                rating: r.rating,
-                text: r.text,
-                date_posted: new Date(r.time * 1000),
+                author: r.authorAttribution?.displayName || 'Anonymous',
+                rating: r.rating || 0,
+                text: r.text?.text || r.originalText?.text || '',
+                date_posted: new Date(),
                 status: 'approved' as const,
               })) : [];
 
               // Hours
               let hours = location.hours;
-              const isOpenNow = details.opening_hours?.open_now ?? location.isOpenNow ?? false;
-              if (details.opening_hours?.periods) {
-                hours = parseGoogleHours(details.opening_hours.periods);
+              const isOpenNow = details.regularOpeningHours?.openNow ?? location.isOpenNow ?? false;
+              if (details.regularOpeningHours?.periods) {
+                hours = convertedLocation.hours || location.hours;
               }
 
               // Service type
-              let serviceType = location.serviceType || "both";
-              if (details.types) {
-                if (details.types.includes('meal_takeaway') || details.types.includes('meal_delivery')) {
-                  serviceType = 'takeaway';
-                } else if (details.types.includes('restaurant')) {
-                  serviceType = 'dine-in';
-                }
-              }
+              const serviceType = convertedLocation.serviceType || location.serviceType || "both";
 
               // Price range
-              let priceRange = location.priceRange || "$$";
-              if (details.price_level !== undefined) {
-                priceRange = details.price_level === 0 || details.price_level === 1 ? '$' : details.price_level === 2 ? '$$' : details.price_level === 3 ? '$$$' : '$$$$';
-              }
+              const priceRange = convertedLocation.priceRange || location.priceRange || "$$";
 
               // Other fields
-              const phone = details.formatted_phone_number || location.phone;
-              const website = details.website || location.website;
-              const description = details.editorial_summary?.overview || location.description;
-              const coordinates = details.geometry?.location || location.coordinates;
+              const phone = details.nationalPhoneNumber || location.phone;
+              const website = details.websiteUri || location.website;
+              const description = location.description; // Places API (New) doesn't have editorial summary in basic fields
+              const coordinates = details.location ? {
+                lat: details.location.latitude,
+                lng: details.location.longitude
+              } : location.coordinates;
               const rating = details.rating || location.rating;
-              const reviewCount = details.user_ratings_total || location.reviewCount || reviews.length;
+              const reviewCount = details.userRatingCount || location.reviewCount || reviews.length;
 
               enrichedLocation = {
                 ...location,
@@ -125,7 +170,9 @@ export async function POST() {
           }]`.trim(),
         };
 
-        const savedLocation = await dbOperations.createLocation(locationToSave);
+        const savedLocation = await adminFirebaseOperations.createLocation(locationToSave);
+        // Log saved location event (Firebase analytics would go here)
+        console.log(`Saved location: ${savedLocation.name}`);
         savedLocations.push(savedLocation);
         console.log(`✅ Saved location: ${savedLocation.name} (ID: ${savedLocation.id})`);
       } catch (error) {
@@ -152,6 +199,20 @@ export async function POST() {
     };
 
     const hasErrors = saveErrors.length > 0;
+    
+    // Log discovery session completion
+    await logAnalyticsEvent(hasErrors ? 'discovery_completed_with_errors' : 'discovery_completed', {
+      region: region || continent,
+      country,
+      state,
+      user: authResult.user.email,
+      locationsFound: discoveredLocations.length,
+      locationsSaved: savedLocations.length,
+      duplicatesSkipped: skippedDuplicates.length,
+      errors: saveErrors.length,
+      timestamp: new Date().toISOString()
+    });
+    
     const responseData = {
       success: true,
       data: {
@@ -171,6 +232,17 @@ export async function POST() {
     return NextResponse.json(responseData);
   } catch (error) {
     console.error('Overall discovery error:', error);
+    
+    // Log discovery failure
+    try {
+      await logAnalyticsEvent('discovery_failed', {
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString()
+      });
+    } catch (logError) {
+      console.error('Failed to log discovery failure:', logError);
+    }
+    
     return NextResponse.json(
       {
         success: false,
@@ -189,10 +261,11 @@ export async function GET() {
       success: true,
       data: {
         lastRun: new Date().toISOString(),
-        status: "active",
+        status: (process.env.FEATURE_DISCOVERY_ENABLED || "false").toLowerCase() === "true" ? "active" : "disabled",
         nextScheduledRun: new Date(
           Date.now() + 24 * 60 * 60 * 1000
         ).toISOString(),
+        sources: (process.env.FEATURE_DISCOVERY_SOURCES || "").split(",").map((s) => s.trim()).filter(Boolean),
       },
     });
   } catch (error) {
@@ -203,47 +276,7 @@ export async function GET() {
   }
 }
 
-// Helper functions copied from locations/route.ts
-async function findPlaceId(address: string, apiKey: string): Promise<string | null> {
-  try {
-    const response = await axios.get(
-      `https://maps.googleapis.com/maps/api/place/textsearch/json`,
-      {
-        params: {
-          query: address,
-          key: apiKey,
-        },
-      }
-    );
-    if (response.data.results && response.data.results.length > 0) {
-      return response.data.results[0].place_id;
-    }
-    return null;
-  } catch (error) {
-    console.error(`Failed to find place_id for address ${address}:`, error);
-    return null;
-  }
-}
-
-async function fetchPlaceDetails(placeId: string, apiKey: string): Promise<any> {
-  try {
-    const fields = "name,formatted_address,geometry,photos,reviews,rating,user_ratings_total,opening_hours,price_level,website,formatted_phone_number,types";
-    const response = await axios.get(
-      `https://maps.googleapis.com/maps/api/place/details/json`,
-      {
-        params: {
-          place_id: placeId,
-          fields,
-          key: apiKey,
-        },
-      }
-    );
-    return response.data.result;
-  } catch (error) {
-    console.error(`Failed to fetch details for place ${placeId}:`, error);
-    return null;
-  }
-}
+// Helper functions removed - now using PlacesApiNewService
 
 function parseGoogleHours(periods: any[]): { [key: string]: { open: string; close: string; isOpen: boolean } } {
   const dayMap: { [key: number]: string } = {

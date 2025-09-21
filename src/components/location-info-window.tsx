@@ -1,22 +1,27 @@
 "use client";
 
 import {
-  Star,
-  Clock,
-  Phone,
-  Globe,
-  MapPin,
-  Navigation,
-  Share2,
-  Heart,
-  Camera,
-  DollarSign,
-} from "lucide-react";
+  StarIcon as Star,
+  ClockIcon as Clock,
+  PhoneIcon as Phone,
+  GlobeAltIcon as Globe,
+  MapPinIcon as MapPin,
+  ArrowTopRightOnSquareIcon as Navigation,
+  ShareIcon as Share2,
+  HeartIcon as Heart,
+  CameraIcon as Camera,
+  CurrencyDollarIcon as DollarSign,
+  ChatBubbleLeftEllipsisIcon as RateReview,
+} from "@heroicons/react/24/outline";
+import React from "react";
 import { AmalaLocation } from "@/types/location";
-import {
-  shareLocationWithDirections,
-} from "@/lib/directions";
+import { formatPriceRange } from "@/lib/currency-utils";
+import { useToast } from "@/contexts/ToastContext";
 import Image from "next/image";
+import { trackEvent } from "@/lib/utils";
+import { useState } from "react";
+import { ReviewSubmission } from "./review-submission";
+import { useAuth } from "@/contexts/FirebaseAuthContext";
 
 interface LocationInfoWindowProps {
   location: AmalaLocation;
@@ -25,19 +30,21 @@ interface LocationInfoWindowProps {
   onSave?: () => void;
 }
 
-export function LocationInfoWindow({
-  location,
-  onDirections,
-  onShare,
-  onSave,
-}: LocationInfoWindowProps) {
+export function LocationInfoWindow({ location, onDirections, onShare, onSave }: LocationInfoWindowProps) {
+  const { user } = useAuth();
+  const { info } = useToast();
+  const [showReviewForm, setShowReviewForm] = useState(false);
   const handleDirections = () => {
     // Instead of opening external maps, just center the map on this location
     // and show a message about directions
     if (typeof window !== "undefined") {
-      alert(`Directions to ${location.name}\n\n${location.address}\n\nIn a production app, this would show turn-by-turn directions within the map.`);
+      info(
+        `Directions to ${location.name}\n\n${location.address}\n\nIn a production app, this would show turn-by-turn directions within the map.`,
+        "Directions"
+      );
     }
     onDirections?.();
+    trackEvent({ type: "directions_clicked", id: location.id });
   };
 
   const handleCall = () => {
@@ -53,8 +60,20 @@ export function LocationInfoWindow({
   };
 
   const handleShare = () => {
-    shareLocationWithDirections(location);
+    // Share location using Web Share API or fallback to clipboard
+    if (navigator.share) {
+      navigator.share({
+        title: location.name,
+        text: `Check out ${location.name} - ${location.description || 'Great Amala spot!'}`,
+        url: `${window.location.origin}/?location=${location.id}`,
+      });
+    } else {
+      // Fallback to clipboard
+      navigator.clipboard.writeText(`${location.name} - ${location.address}`);
+      info("Location details copied to clipboard!", "Shared");
+    }
     onShare?.();
+    trackEvent({ type: "place_viewed", id: location.id });
   };
 
   return (
@@ -66,12 +85,20 @@ export function LocationInfoWindow({
             src={location.images[0]}
             alt={location.name}
             className="w-full h-full object-cover"
+            fill
+            unoptimized
+            onError={(e) => {
+              // Hide the image and show the fallback icon on error
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+            }}
           />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Camera className="w-8 h-8 text-white opacity-60" />
-          </div>
-        )}
+        ) : null}
+        
+        {/* Always show fallback icon container, but hide it when image loads successfully */}
+        <div className="w-full h-full flex items-center justify-center">
+          <Camera className="w-8 h-8 text-white opacity-60" />
+        </div>
 
         {/* Status badge */}
         <div className="absolute top-2 right-2">
@@ -120,7 +147,9 @@ export function LocationInfoWindow({
         <div className="flex items-center gap-4 mb-3 text-sm">
           <div className="flex items-center gap-1">
             <DollarSign className="w-4 h-4 text-green-600" />
-            <span className="font-medium">{location.priceRange}</span>
+            <span className="font-medium">
+              {location.priceInfo || "Price not available"}
+            </span>
           </div>
           <span className="text-gray-400">•</span>
           <span className="text-gray-600 capitalize">
@@ -177,7 +206,7 @@ export function LocationInfoWindow({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 mb-3">
           <button
             onClick={handleDirections}
             className="flex-1 bg-primary hover:bg-primary text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
@@ -203,6 +232,17 @@ export function LocationInfoWindow({
           </button>
         </div>
 
+        {/* Write Review Button */}
+        {user && (
+          <button
+            onClick={() => setShowReviewForm(true)}
+            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-3"
+          >
+            <RateReview className="w-4 h-4" />
+            Write a Review
+          </button>
+        )}
+
         {/* Hours (if available) */}
         {location.hours && (
           <div className="mt-3 pt-3 border-t border-gray-200">
@@ -215,6 +255,20 @@ export function LocationInfoWindow({
           </div>
         )}
       </div>
+
+      {/* Review Form Modal */}
+      {showReviewForm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <ReviewSubmission
+            location={location}
+            onSubmitted={() => {
+              setShowReviewForm(false);
+              // Optionally refresh location data or show success message
+            }}
+            onCancel={() => setShowReviewForm(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -227,10 +281,79 @@ export function createInfoWindowContent(location: AmalaLocation): string {
       ).join("")
     : "";
 
+  const reviewsPreview =
+    location.reviews && location.reviews.length > 0
+      ? `
+      <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8eaed;">
+        <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #202124;">Recent Reviews</h4>
+        ${location.reviews
+          .slice(0, 2)
+          .map(
+            (review) => `
+          <div style="margin-bottom: 8px; padding: 8px; background: #f8f9fa; border-radius: 8px; font-size: 12px;">
+            <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+              <span style="color: #fbbc04;">${"★".repeat(
+                review.rating
+              )}${"☆".repeat(5 - review.rating)}</span>
+              <span style="color: #5f6368;">by ${review.author}</span>
+            </div>
+            <p style="margin: 0; color: #5f6368; line-height: 1.3;">${
+              review.text
+            }</p>
+          </div>
+        `
+          )
+          .join("")}
+        ${
+          location.reviews.length > 2
+            ? `<p style="margin: 4px 0 0 0; text-align: center; font-size: 12px; color: #5f6368;">... and ${
+                location.reviews.length - 2
+              } more</p>`
+            : ""
+        }
+      </div>
+    `
+      : "";
+
+  const hoursPreview = location.hours
+    ? `
+      <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8eaed;">
+        <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600; color: #202124;">Hours</h4>
+        <div style="font-size: 12px; color: #5f6368;">
+          ${Object.entries(location.hours)
+            .slice(0, 3)
+            .map(
+              ([day, hours]) => `
+            <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+              <span style="text-transform: capitalize;">${day}</span>
+              <span>${hours.open} - ${hours.close}</span>
+            </div>
+          `
+            )
+            .join("")}
+          ${
+            Object.keys(location.hours).length > 3
+              ? '<p style="margin: 4px 0 0 0; text-align: center; font-size: 12px; color: #5f6368;">... view all</p>'
+              : ""
+          }
+        </div>
+      </div>
+    `
+    : "";
+
+  const websiteButton = location.website
+    ? `
+      <a href="${location.website}" target="_blank"
+         style="border: 1px solid #dadce0; color: #1a73e8; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 14px; display: inline-block; margin-top: 8px;">
+        Website
+      </a>
+    `
+    : "";
+
   return `
-    <div style="width: 280px; font-family: 'Product Sans', 'Inter', sans-serif;">
-      <div style="padding: 12px;">
-        <h3 style="margin: 0 0 8px 0; font-size: 16px; font-weight: 600; color: #202124;">
+    <div style="width: 320px; max-height: 400px; overflow-y: auto; font-family: 'Google Sans', sans-serif; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+      <div style="padding: 16px;">
+        <h3 style="margin: 0 0 8px 0; font-size: 18px; font-weight: 600; color: #202124;">
           ${location.name}
         </h3>
         
@@ -238,7 +361,7 @@ export function createInfoWindowContent(location: AmalaLocation): string {
           location.rating
             ? `
           <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 8px;">
-            <span style="color: #fbbc04; font-size: 14px;">${ratingStars}</span>
+            <span style="color: #fbbc04; font-size: 16px;">${ratingStars}</span>
             <span style="font-size: 14px; color: #5f6368;">${location.rating} (${location.reviewCount})</span>
           </div>
         `
@@ -247,12 +370,13 @@ export function createInfoWindowContent(location: AmalaLocation): string {
         
         <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 14px;">
           <span style="font-weight: 500; color: #137333;">${
-            location.priceRange
+            location.priceInfo || "Price not available"
           }</span>
           <span style="color: #5f6368;">•</span>
-          <span style="color: #5f6368; text-transform: capitalize;">
-            ${location.serviceType.replace("-", " ")}
-          </span>
+          <span style="color: #5f6368; text-transform: capitalize;">${location.serviceType.replace(
+            "-",
+            " "
+          )}</span>
         </div>
         
         <div style="margin-bottom: 8px;">
@@ -260,7 +384,7 @@ export function createInfoWindowContent(location: AmalaLocation): string {
             .slice(0, 3)
             .map(
               (cuisine) =>
-                `<span style="display: inline-block; padding: 2px 8px; background: #f1f3f4; color: #5f6368; border-radius: 12px; font-size: 12px; margin-right: 4px;">${cuisine}</span>`
+                `<span style="display: inline-block; padding: 4px 8px; background: #f1f3f4; color: #5f6368; border-radius: 12px; font-size: 12px; margin-right: 4px;">${cuisine}</span>`
             )
             .join("")}
         </div>
@@ -279,31 +403,35 @@ export function createInfoWindowContent(location: AmalaLocation): string {
           📍 ${location.address}
         </div>
         
-        <div style="display: flex; gap: 8px; margin-top: 12px;">
+        <div style="display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;">
           <a href="https://www.google.com/maps/dir/?api=1&destination=${
             location.coordinates.lat
-          },${location.coordinates.lng}" 
-             target="_blank" 
+          },${location.coordinates.lng}"
+             target="_blank"
              style="background: #1a73e8; color: white; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500;">
             Directions
           </a>
           ${
             location.phone
               ? `
-            <a href="tel:${location.phone}" 
+            <a href="tel:${location.phone}"
                style="border: 1px solid #dadce0; color: #1a73e8; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 14px;">
               Call
             </a>
           `
               : ""
           }
+          ${websiteButton}
         </div>
         
-        <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e8eaed; font-size: 12px; color: #5f6368;">
+        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8eaed; font-size: 12px; color: #5f6368;">
           <span style="display: inline-flex; align-items: center; gap: 4px;">
             🕒 ${location.isOpenNow ? "Open now" : "Closed"}
           </span>
         </div>
+
+        ${hoursPreview}
+        ${reviewsPreview}
       </div>
     </div>
   `;

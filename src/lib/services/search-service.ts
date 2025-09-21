@@ -242,7 +242,7 @@ export class SearchService {
 
       // Price range filter
       if (filters.priceRange && filters.priceRange.length > 0) {
-        if (!filters.priceRange.includes(location.priceRange)) {
+        if (!location.priceRange || !filters.priceRange.includes(location.priceRange as "$" | "$$" | "$$$" | "$$$$")) {
           return false;
         }
       }

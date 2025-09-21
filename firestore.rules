@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow all reads/writes for server-side Admin SDK
+    // The Admin SDK bypasses security rules, but we'll still have some basic rules
+    
+    // Locations collection - Public read, auth required for write
+    match /locations/{locationId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && 
+        (request.auth.token.admin == true || 
+         request.auth.token.moderator == true ||
+         request.auth.token.uid == resource.data.submittedBy);
+    }
+    
+    // Reviews collection - Only approved reviews are publicly readable
+    match /reviews/{reviewId} {
+      allow read: if resource.data.status == 'approved' || 
+        (request.auth != null && 
+         (request.auth.token.admin == true || 
+          request.auth.token.moderator == true));
+      
+      // Allow users to create their own reviews
+      allow create: if request.auth != null && 
+        request.resource.data.userId == request.auth.uid;
+        
+      // Only allow updates to status for moderation
+      allow update: if request.auth != null && 
+        (request.auth.token.admin == true || 
+         request.auth.token.moderator == true) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']);
+    }
+    
+    // Analytics events - Auth required
+    match /analytics_events/{eventId} {
+      allow read, write: if request.auth != null && 
+        (request.auth.token.admin == true || 
+         request.auth.token.moderator == true);
+    }
+    
+    // Restaurant photos - Only approved photos are publicly readable
+    match /restaurant_photos/{photoId} {
+      allow read: if resource.data.status == 'approved' || 
+        (request.auth != null && 
+         (request.auth.token.admin == true || 
+          request.auth.token.moderator == true));
+      
+      allow create: if request.auth != null;
+      
+      // Only allow updates to status for moderation
+      allow update: if request.auth != null && 
+        (request.auth.token.admin == true || 
+         request.auth.token.moderator == true) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']);
+    }
+    
+    // Moderation logs - Only admins and moderators can read/write
+    match /moderation_logs/{logId} {
+      allow read, write: if request.auth != null && 
+        (request.auth.token.admin == true || 
+         request.auth.token.moderator == true);
+    }
+    
+    // User roles - Only admins can manage
+    match /user_roles/{userId} {
+      allow read: if request.auth != null && 
+        (request.auth.token.admin == true || 
+         request.auth.token.moderator == true ||
+         request.auth.uid == userId);
+      allow write: if request.auth != null && 
+        request.auth.token.admin == true;
+    }
+  }
+}

@@ -16,9 +16,9 @@ import {
   formatLocationInfo,
 } from "@/lib/google-maps";
 import { MapClusterer } from "@/lib/map-clustering";
-import { Loader2, AlertCircle } from "lucide-react";
+import { ArrowPathIcon as Loader2, ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline";
 import { MapControls } from "./map-controls";
-import { createInfoWindowContent } from "./location-info-window";
+import { GoogleMapsLocationDetail } from "./google-maps-location-detail";
 
 interface MapContainerProps {
   locations: AmalaLocation[];
@@ -30,7 +30,7 @@ interface MapContainerProps {
     serviceType?: string;
     priceRange?: string[];
   };
-  onLocationApproved?: (locationId: string) => void;  // New prop for moderation callback
+  onLocationApproved?: (locationId: string) => void; // New prop for moderation callback
 }
 
 export function MapContainer({
@@ -43,9 +43,6 @@ export function MapContainer({
   const mapRef = useRef<HTMLDivElement>(null);
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
-  const [infoWindow, setInfoWindow] = useState<google.maps.InfoWindow | null>(
-    null
-  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isGoogleMapsLoaded, setIsGoogleMapsLoaded] = useState(false);
@@ -111,14 +108,14 @@ export function MapContainer({
 
       console.log("✅ Google Maps API loaded successfully");
 
-      // Default center to Lagos, Nigeria (Amala heartland)
-      const defaultCenter = { lat: 6.5244, lng: 3.3792 };
+      // Default to global view
+      const defaultCenter = { lat: 20, lng: 0 };
 
       console.log("🗺️ Initializing map instance...");
 
       const mapInstance = new window.google.maps.Map(mapRef.current, {
         center: defaultCenter,
-        zoom: 12,
+        zoom: 2,
         styles: amalaMapStyles,
         mapTypeControl: false,
         streetViewControl: false,
@@ -131,12 +128,7 @@ export function MapContainer({
 
       console.log("✅ Map instance created");
 
-      const infoWindowInstance = new window.google.maps.InfoWindow({
-        maxWidth: 300,
-      });
-
       setMap(mapInstance);
-      setInfoWindow(infoWindowInstance);
       setIsGoogleMapsLoaded(true);
 
       // Initialize clustering
@@ -167,7 +159,7 @@ export function MapContainer({
 
   // Update markers when locations change
   const updateMarkers = useCallback(() => {
-    if (!map || !infoWindow || !isGoogleMapsLoaded || !clusterer) return;
+    if (!map || !isGoogleMapsLoaded || !clusterer) return;
 
     console.log(`🔄 Updating ${locations.length} markers with clustering...`);
 
@@ -187,7 +179,7 @@ export function MapContainer({
         title: location.name,
         icon: createCustomMarker(
           location.isOpenNow,
-          location.priceRange,
+          location.priceInfo || "Pricing available",
           location.rating
         ),
         // Don't add to map directly - let clusterer handle it
@@ -196,15 +188,22 @@ export function MapContainer({
 
       // Add click listener
       marker.addListener("click", () => {
-        // Close any open info window
-        infoWindow.close();
-
-        // Set content and open info window
-        infoWindow.setContent(createInfoWindowContent(location));
-        infoWindow.open(map, marker);
-
         // Trigger location selection
         onLocationSelect(location);
+
+        // Analytics: place viewed
+        try {
+          fetch("/api/analytics", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              event_type: "place_viewed",
+              location_id: location.id,
+              metadata: { name: location.name },
+            }),
+            keepalive: true,
+          });
+        } catch {}
 
         // Center map on clicked location
         map.panTo(location.coordinates);
@@ -244,14 +243,7 @@ export function MapContainer({
         );
       }
     }
-  }, [
-    map,
-    infoWindow,
-    locations,
-    onLocationSelect,
-    isGoogleMapsLoaded,
-    clusterer,
-  ]);
+  }, [map, locations, onLocationSelect, isGoogleMapsLoaded, clusterer]);
 
   // Handle selected location changes
   useEffect(() => {
@@ -260,26 +252,15 @@ export function MapContainer({
         (marker, index) => locations[index]?.id === selectedLocation.id
       );
 
-      if (selectedMarker && infoWindow) {
+      if (selectedMarker) {
         // Pan to location
         map.panTo(selectedLocation.coordinates);
         if (map.getZoom() && map.getZoom()! < 15) {
           map.setZoom(15);
         }
-
-        // Open info window
-        infoWindow.setContent(createInfoWindowContent(selectedLocation));
-        infoWindow.open(map, selectedMarker);
       }
     }
-  }, [
-    map,
-    selectedLocation,
-    markers,
-    locations,
-    infoWindow,
-    isGoogleMapsLoaded,
-  ]);
+  }, [map, selectedLocation, markers, locations, isGoogleMapsLoaded]);
 
   // Initialize map on component mount
   useLayoutEffect(() => {
@@ -330,14 +311,8 @@ export function MapContainer({
 
       {/* Loading overlay */}
       {isLoading && (
-        <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-primary/5 to-indigo-100 flex items-center justify-center z-10">
-          <div className="text-center">
-            <Loader2 className="w-8 h-8 mx-auto mb-4 text-primary animate-spin" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Loading Map
-            </h3>
-            <p className="text-gray-600">Initializing Google Maps...</p>
-          </div>
+        <div className="absolute inset-0 w-full h-full bg-white/80 flex items-center justify-center z-10">
+          <div className="w-8 h-8 border-2 border-orange-200 border-t-orange-500 rounded-full animate-spin"></div>
         </div>
       )}
 
@@ -406,7 +381,10 @@ export function MapContainer({
 
           <div className="absolute top-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-2 border border-primary/20 transition-all duration-200 hover:shadow-xl hover:bg-white">
             <div className="text-sm text-gray-700">
-              <span className="font-medium text-primary">{locations.length}</span> locations
+              <span className="font-medium text-primary">
+                {locations.length}
+              </span>{" "}
+              locations
             </div>
           </div>
 
