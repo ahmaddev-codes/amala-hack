@@ -11,7 +11,9 @@ import {
   User,
   sendPasswordResetEmail,
   updateProfile,
-  signInWithPopup
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult
 } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase/config';
 
@@ -62,8 +64,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const fetchUserWithRoles = async (firebaseUser: User): Promise<AuthUser> => {
     try {
-      console.log("🔄 Fetching user with roles for:", firebaseUser.email);
-
       let roles: Array<"user" | "scout" | "mod" | "admin"> = ["user"];
 
       // Fetch roles from API (server-side computation, no Firestore needed)
@@ -80,11 +80,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
           const data = await response.json();
           if (data.success && data.roles) {
             roles = data.roles;
-            console.log("✅ Got roles from API:", roles);
           }
         }
       } catch (apiError) {
-        console.warn("⚠️ Could not fetch roles from API, using default:", apiError);
+        // Silently use default roles if API fails
       }
 
       const completeUser: AuthUser = {
@@ -97,7 +96,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       return completeUser;
     } catch (error) {
-      console.error("❌ Error fetching user roles:", error);
       return {
         id: firebaseUser.uid,
         email: firebaseUser.email || undefined,
@@ -116,7 +114,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const completeUser = await fetchUserWithRoles(auth.currentUser);
         setUser(completeUser);
       } catch (error) {
-        console.error("❌ Error refreshing user:", error);
+        // Silently handle refresh errors
       } finally {
         setIsLoading(false);
       }
@@ -126,15 +124,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     let mounted = true;
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("🔄 Auth state change:", firebaseUser?.email || 'signed out');
-      console.log("🔍 Auth state details:", {
-        hasUser: !!firebaseUser,
-        uid: firebaseUser?.uid,
-        email: firebaseUser?.email,
-        mounted
-      });
+    // Handle redirect result from Google OAuth
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          // Google sign-in successful
+        }
+      } catch (error: any) {
+        // Silently handle redirect result errors
+      }
+    };
 
+    handleRedirectResult();
+
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser && mounted) {
         setIsLoading(true);
         setFirebaseUser(firebaseUser);
@@ -142,11 +146,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
           const completeUser = await fetchUserWithRoles(firebaseUser);
           if (mounted) {
             setUser(completeUser);
-            console.log("✅ User updated:", completeUser.email, "roles:", completeUser.roles);
             setIsLoading(false);
           }
         } catch (error) {
-          console.error("❌ Error in auth state change:", error);
           // On error, create a basic user without roles to prevent sign-out
           if (mounted) {
             const basicUser: AuthUser = {
@@ -157,12 +159,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
               roles: ["user"],
             };
             setUser(basicUser);
-            console.log("⚠️ Using basic user due to role fetch error");
             setIsLoading(false);
           }
         }
       } else {
-        console.log("🚪 Setting user to null, mounted:", mounted);
         setUser(null);
         setFirebaseUser(null);
         if (mounted) {
@@ -182,7 +182,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await signInWithEmailAndPassword(auth, email, password);
       return {};
     } catch (error: any) {
-      console.error("Sign in error:", error);
       return { error: error.message };
     }
   };
@@ -190,40 +189,65 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signInWithGoogle = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      console.log("✅ Google sign-in successful:", result.user.email);
-      return {};
+
+      // Configure provider for better UX
+      provider.setCustomParameters({
+        prompt: 'select_account'
+      });
+
+      try {
+        // First, try popup method
+        const result = await signInWithPopup(auth, provider);
+        return {};
+      } catch (popupError: any) {
+        // If popup is blocked, fall back to redirect
+        if (popupError.code === 'auth/popup-blocked' ||
+            popupError.code === 'auth/cancelled-popup-request') {
+          await signInWithRedirect(auth, provider);
+          // The redirect will handle the rest, no return needed
+          return {};
+        } else {
+          // Re-throw other errors
+          throw popupError;
+        }
+      }
     } catch (error: any) {
-      console.error("Google sign in error:", error);
-      return { error: error.message };
+      // Provide user-friendly error messages
+      let errorMessage = error.message;
+      if (error.code === 'auth/popup-blocked') {
+        errorMessage = "Popup was blocked by your browser. Please allow popups for this site or try again.";
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        errorMessage = "Sign-in was cancelled. Please try again.";
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMessage = "Network error. Please check your internet connection and try again.";
+      }
+
+      return { error: errorMessage };
     }
   };
 
   const signUp = async (email: string, password: string, name: string) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      
+
       // Update display name
       if (userCredential.user) {
         await updateProfile(userCredential.user, { displayName: name });
       }
-      
+
       return {};
     } catch (error: any) {
-      console.error("Sign up error:", error);
       return { error: error.message };
     }
   };
 
   const signOut = async () => {
-    console.log("🚪 Signing out user");
     setIsLoading(true);
 
     try {
       await firebaseSignOut(auth);
-      console.log("✅ Successfully signed out");
     } catch (error) {
-      console.error("Sign out error:", error);
+      // Silently handle sign out errors
     } finally {
       setIsLoading(false);
     }
@@ -250,15 +274,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return hasRole("admin");
   };
 
+  const refreshUserRoles = async () => {
+    if (user) {
+      try {
+        if (auth.currentUser) {
+          const updatedUser = await fetchUserWithRoles(auth.currentUser);
+          setUser(updatedUser);
+          return true;
+        }
+      } catch (error) {
+        // Silently handle role refresh errors
+      }
+    }
+    return false;
+  };
+
   const getIdToken = async (): Promise<string | null> => {
     try {
       if (!firebaseUser) {
-        console.warn("No Firebase user available for token");
         return null;
       }
       return await firebaseUser.getIdToken();
     } catch (error) {
-      console.error("Failed to get ID token:", error);
       return null;
     }
   };
@@ -277,6 +314,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     canModerate,
     canAdmin,
     refreshUser,
+    refreshUserRoles,
     getIdToken,
   };
 

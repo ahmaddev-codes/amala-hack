@@ -8,16 +8,24 @@ if (!getApps().length) {
   const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
   
   if (!privateKey || !process.env.FIREBASE_CLIENT_EMAIL || !process.env.FIREBASE_PROJECT_ID) {
-    console.warn('Firebase Admin SDK not initialized - missing environment variables');
+    console.warn('Firebase Admin SDK not initialized - missing environment variables:');
+    console.warn('- FIREBASE_PRIVATE_KEY:', privateKey ? 'present' : 'missing');
+    console.warn('- FIREBASE_CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? 'present' : 'missing');
+    console.warn('- FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? 'present' : 'missing');
   } else {
-    initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: privateKey,
-      }),
-      storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-    });
+    try {
+      initializeApp({
+        credential: cert({
+          projectId: process.env.FIREBASE_PROJECT_ID,
+          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+          privateKey: privateKey,
+        }),
+        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+      });
+      console.log('✅ Firebase Admin SDK initialized successfully');
+    } catch (error) {
+      console.error('❌ Firebase Admin SDK initialization failed:', error);
+    }
   }
 }
 
