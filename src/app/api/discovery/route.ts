@@ -1,15 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AutonomousDiscoveryService } from "@/lib/services/autonomous-discovery";
-import { PlacesApiNewService } from "@/lib/services/places-api-new";
+import { PlacesApiNewService } from "@/lib/services/places-api";
+import { BatchedPlacesApiService } from "@/lib/services/places-api-batch";
 import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
 import axios from "axios";
 import crypto from "crypto";
 import { rateLimit, requireRole, verifyBearerToken } from "@/lib/auth";
+import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase/config';
+
+// Analytics logging helper function
+async function logAnalyticsEvent(eventType: string, metadata: any = {}) {
+  try {
+    const analyticsRef = collection(db, 'analytics_events');
+    await addDoc(analyticsRef, {
+      event_type: eventType,
+      metadata,
+      created_at: Timestamp.now(),
+      createdAt: Timestamp.now(),
+    });
+  } catch (error) {
+    console.error('Failed to log analytics event:', error);
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await verifyBearerToken(request.headers.get("authorization") || undefined);
-    if (!requireRole(auth, ["mod", "admin"])) {
+    const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+    
+    const roleCheck = requireRole(authResult.user, ["mod", "admin"]);
+    if (!roleCheck.success) {
       return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
     // Feature flag: discovery jobs
@@ -23,12 +46,25 @@ export async function POST(request: NextRequest) {
     if (!rl.allowed) {
       return NextResponse.json({ success: false, error: "Rate limit exceeded. Try again later." }, { status: 429 });
     }
-    // Get region parameter from request body
+    // Get geographic parameters from request body
     const body = await request.json().catch(() => ({}));
-    const { region } = body;
+    const { region, country, state, continent } = body;
 
-    // Trigger autonomous discovery from multiple sources with optional region
-    const discoveredLocations = await AutonomousDiscoveryService.discoverLocations(region);
+    // Log discovery session start
+    await logAnalyticsEvent('discovery_started', {
+      region: region || continent,
+      country,
+      state,
+      user: authResult.user.email,
+      timestamp: new Date().toISOString()
+    });
+
+    // Trigger autonomous discovery from multiple sources with geographic targeting
+    const discoveredLocations = await AutonomousDiscoveryService.discoverLocations(
+      region || continent, 
+      country, 
+      state
+    );
 
     // Save discovered locations to database with 'pending' status
     const savedLocations = [];
@@ -37,28 +73,13 @@ export async function POST(request: NextRequest) {
 
     for (const location of discoveredLocations) {
       try {
-        // Check for duplicates by name and address similarity
-        // Check against all statuses to avoid re-adding pending items
-        const existingLocations = await adminFirebaseOperations.getAllLocations();
-        const isDuplicate = existingLocations.some(
-          (existing) => {
-            const nameCandidate = (location.name || "").toLowerCase().trim();
-            const addrCandidate = (location.address || "").toLowerCase().trim();
-            const nameSim = nameCandidate
-              ? AutonomousDiscoveryService.calculateSimilarity(
-                  nameCandidate,
-                  existing.name.toLowerCase().trim()
-                )
-              : 0;
-            const addrSim = addrCandidate
-              ? AutonomousDiscoveryService.calculateSimilarity(
-                  addrCandidate,
-                  existing.address.toLowerCase().trim()
-                )
-              : 0;
-            return nameSim > 0.7 || addrSim > 0.85;
-          }
+        // PERFORMANCE OPTIMIZATION: Use database query instead of loading all locations
+        const similarLocations = await adminFirebaseOperations.findSimilarLocations(
+          location.name || "",
+          location.address || "",
+          0.7
         );
+        const isDuplicate = similarLocations.length > 0;
 
         if (isDuplicate) {
           skippedDuplicates.push(location.name);
@@ -72,9 +93,10 @@ export async function POST(request: NextRequest) {
         let enrichedLocation = { ...location };
 
         if (googleApiKey && location.address) {
-          const placeId = await PlacesApiNewService.findPlaceId(location.address, googleApiKey);
+          // PERFORMANCE: Use batched API service for better caching and rate limiting
+          const placeId = await BatchedPlacesApiService.findPlaceId(location.address, googleApiKey);
           if (placeId) {
-            const details = await PlacesApiNewService.getPlaceDetails(placeId, googleApiKey);
+            const details = await BatchedPlacesApiService.getPlaceDetails(placeId, googleApiKey);
             if (details) {
               // Convert to AmalaLocation format using the new service
               const convertedLocation = PlacesApiNewService.convertToAmalaLocation(details);
@@ -88,9 +110,9 @@ export async function POST(request: NextRequest) {
               const reviews = details.reviews ? details.reviews.slice(0, 5).map((r: any) => ({
                 id: crypto.randomUUID(),
                 location_id: '', // Set after insert
-                author: r.authorAttribution.displayName,
-                rating: r.rating,
-                text: r.text.text,
+                author: r.authorAttribution?.displayName || 'Anonymous',
+                rating: r.rating || 0,
+                text: r.text?.text || r.originalText?.text || '',
                 date_posted: new Date(),
                 status: 'approved' as const,
               })) : [];
@@ -177,6 +199,20 @@ export async function POST(request: NextRequest) {
     };
 
     const hasErrors = saveErrors.length > 0;
+    
+    // Log discovery session completion
+    await logAnalyticsEvent(hasErrors ? 'discovery_completed_with_errors' : 'discovery_completed', {
+      region: region || continent,
+      country,
+      state,
+      user: authResult.user.email,
+      locationsFound: discoveredLocations.length,
+      locationsSaved: savedLocations.length,
+      duplicatesSkipped: skippedDuplicates.length,
+      errors: saveErrors.length,
+      timestamp: new Date().toISOString()
+    });
+    
     const responseData = {
       success: true,
       data: {
@@ -196,6 +232,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(responseData);
   } catch (error) {
     console.error('Overall discovery error:', error);
+    
+    // Log discovery failure
+    try {
+      await logAnalyticsEvent('discovery_failed', {
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString()
+      });
+    } catch (logError) {
+      console.error('Failed to log discovery failure:', logError);
+    }
+    
     return NextResponse.json(
       {
         success: false,

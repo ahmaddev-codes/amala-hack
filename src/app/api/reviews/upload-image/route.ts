@@ -1,22 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '@/lib/firebase/config';
-import { verifyFirebaseToken } from '@/lib/firebase/auth-middleware';
+import { verifyBearerToken } from "@/lib/auth";
+import cloudinary, { getUploadOptions } from "@/lib/cloudinary/config";
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify Firebase authentication
-    let user;
-    try {
-      user = await verifyFirebaseToken(request);
-      console.log("✅ Image upload - Firebase auth successful:", user.uid);
-    } catch (authError) {
-      console.error("❌ Image upload - Firebase auth failed:", authError);
+    // Verify Bearer token authentication
+    const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
         { error: "Authentication required to upload images" },
         { status: 401 }
       );
     }
+    console.log("✅ Image upload - Bearer auth successful:", authResult.user.id);
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
@@ -31,7 +27,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the userId matches the authenticated user
-    if (userId !== user.uid) {
+    if (userId !== authResult.user.id) {
       return NextResponse.json(
         { error: "User ID mismatch" },
         { status: 403 }
@@ -54,40 +50,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate unique filename
-    const fileExt = file.name.split(".").pop();
-    const fileName = `${userId}/${locationId}/${Date.now()}-${Math.random()
-      .toString(36)
-      .substring(7)}.${fileExt}`;
-    const filePath = `review-images/${fileName}`;
-
     try {
-      // Create storage reference
-      const storageRef = ref(storage, filePath);
-      
-      // Convert File to ArrayBuffer for Firebase
+      // Convert File to Buffer for Cloudinary
       const arrayBuffer = await file.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
+      const buffer = Buffer.from(arrayBuffer);
       
-      // Upload to Firebase Storage
-      const snapshot = await uploadBytes(storageRef, uint8Array, {
-        contentType: file.type,
+      // Generate unique public ID
+      const publicId = `${userId}_${locationId}_${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(7)}`;
+      
+      // Upload to Cloudinary
+      const uploadResult = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          getUploadOptions('amala-reviews', publicId),
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(buffer);
       });
       
-      // Get download URL
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      
-      console.log(`✅ Image uploaded successfully to Firebase: ${downloadURL}`);
+      const result = uploadResult as any;
+      console.log(`✅ Image uploaded successfully to Cloudinary: ${result.secure_url}`);
 
       return NextResponse.json({
         success: true,
-        imageUrl: downloadURL,
-        filePath: filePath,
+        imageUrl: result.secure_url,
+        publicId: result.public_id,
+        width: result.width,
+        height: result.height,
       });
     } catch (uploadError) {
-      console.error("❌ Firebase Storage upload error:", uploadError);
+      console.error("❌ Cloudinary upload error:", uploadError);
       return NextResponse.json(
-        { error: "Failed to upload image to Firebase Storage" },
+        { error: "Failed to upload image to Cloudinary" },
         { status: 500 }
       );
     }

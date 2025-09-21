@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { googlePlacesService } from "@/lib/services/google-places-service";
+import { OpenStreetMapService } from "@/lib/services/openstreetmap-service";
 import { z } from "zod";
 
 // Request validation schema
@@ -16,9 +16,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validatedData = enrichLocationSchema.parse(body);
 
-    // Enrich location with Google Places data
-    const enrichedLocation =
-      await googlePlacesService.enrichLocationWithPricing(validatedData);
+    // Enrich location with OpenStreetMap data (free alternative)
+    const searchQuery = `${validatedData.name} ${validatedData.address}`;
+    const searchResults = await OpenStreetMapService.searchPlaces(searchQuery, undefined, 1);
+    
+    const enrichedLocation = searchResults.length > 0 ? {
+      ...validatedData,
+      coordinates: searchResults[0].coordinates,
+      enrichedAddress: searchResults[0].address,
+      source: 'openstreetmap',
+    } : validatedData;
 
     return NextResponse.json({
       success: true,
@@ -79,12 +86,8 @@ export async function GET(request: NextRequest) {
       lat && lng ? { lat: parseFloat(lat), lng: parseFloat(lng) } : undefined;
     const searchRadius = radius ? parseInt(radius) : 5000;
 
-    // Search restaurants
-    const results = await googlePlacesService.searchRestaurants(
-      query,
-      location,
-      searchRadius
-    );
+    // Search restaurants using OpenStreetMap
+    const results = await OpenStreetMapService.searchRestaurants(query);
 
     return NextResponse.json({
       success: true,

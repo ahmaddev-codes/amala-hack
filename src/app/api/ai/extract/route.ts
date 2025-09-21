@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { EnhancedAILocationService } from "@/lib/services/ai-service";
+import { AILocationService } from "@/lib/services/ai-service";
 import { rateLimit } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
@@ -25,13 +25,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract location information using Enhanced AI
-    const extraction = await EnhancedAILocationService.extractLocationInfo(
+    const extraction = await AILocationService.extractLocationInfo(
       message,
       conversationHistory || []
     );
 
     // Generate follow-up question if needed
-    let followUp = await EnhancedAILocationService.generateFollowUpQuestion(
+    let followUp = await AILocationService.generateFollowUpQuestion(
       extraction.extracted,
       conversationHistory
     );
@@ -89,7 +89,7 @@ export async function PUT(request: NextRequest) {
     const { location, existingLocations } = await request.json();
 
     // Check for duplicates
-    const duplicateCheck = await EnhancedAILocationService.detectDuplicate(
+    const duplicateCheck = await AILocationService.detectDuplicate(
       location,
       existingLocations || []
     );

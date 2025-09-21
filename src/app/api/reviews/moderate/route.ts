@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyBearerToken, requireRole } from "@/lib/auth";
-import { firebaseOperations } from "@/lib/firebase/database";
+import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
 import { z } from "zod";
 
 const ReviewModerationSchema = z.object({
@@ -13,18 +13,19 @@ export async function POST(request: NextRequest) {
   try {
     // Verify authentication and role
     const authHeader = request.headers.get("authorization");
-    const user = await verifyBearerToken(authHeader);
+    const authResult = await verifyBearerToken(authHeader || undefined);
     
-    if (!user) {
+    if (!authResult.success) {
       return NextResponse.json(
-        { success: false, error: "Authentication required" },
+        { success: false, error: authResult.error },
         { status: 401 }
       );
     }
 
-    if (!requireRole(user, ["mod", "admin"])) {
+    const roleCheck = requireRole(authResult.user!, ["mod", "admin"]);
+    if (!roleCheck.success) {
       return NextResponse.json(
-        { success: false, error: "Moderator or admin role required" },
+        { success: false, error: roleCheck.error },
         { status: 403 }
       );
     }
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
         { 
           success: false, 
           error: "Invalid request data",
-          details: validation.error.errors 
+          details: validation.error.issues 
         },
         { status: 400 }
       );
@@ -45,19 +46,12 @@ export async function POST(request: NextRequest) {
 
     const { reviewId, action, reason } = validation.data;
 
-    // Update review status
-    const updateData: any = {
-      status: action === "approve" ? "approved" : "rejected",
-      moderatedAt: new Date(),
-      moderatedBy: user.email,
-    };
-
-    if (reason) {
-      updateData.moderationReason = reason;
-    }
-
-    // Update the review in the database
-    const updatedReview = await firebaseOperations.updateReview(reviewId, updateData);
+    // Update the review in the database using admin operations
+    const updatedReview = await adminFirebaseOperations.updateReviewStatus(
+      reviewId, 
+      action === "approve" ? "approved" : "rejected",
+      authResult.user!.email
+    );
     
     if (!updatedReview) {
       return NextResponse.json(
@@ -68,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     // If approved, update the location's rating
     if (action === "approve") {
-      await firebaseOperations.updateLocationRating(updatedReview.location_id);
+      await adminFirebaseOperations.updateLocationRating(updatedReview.location_id);
     }
 
     return NextResponse.json({

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { firebaseOperations } from "@/lib/firebase/database";
+import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
 import { verifyFirebaseToken } from "@/lib/firebase/auth-middleware";
 import { z } from "zod";
+import { requireRole, verifyBearerToken } from "@/lib/auth";
 
 const ReviewSubmissionSchema = z.object({
   location_id: z.string().min(1),
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if location exists
-    const location = await firebaseOperations.getLocationById(
+    const location = await adminFirebaseOperations.getLocationById(
       validatedReview.location_id
     );
     if (!location) {
@@ -99,11 +100,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user has already reviewed this location
-    const existingReviews =
-      await firebaseOperations.getReviewsByLocationAndUser(
-        validatedReview.location_id,
-        user.uid
-      );
+    const existingReviews = await adminFirebaseOperations.getReviewsByLocationAndUser(
+      validatedReview.location_id,
+      user.uid
+    );
     if (existingReviews.length > 0) {
       return NextResponse.json(
         { success: false, error: "You have already reviewed this location" },
@@ -111,19 +111,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the review
-    const reviewData = {
+    // Create review using admin SDK
+    const newReview = await adminFirebaseOperations.createReview({
       ...validatedReview,
-      author: user.email || "Anonymous",
       user_id: user.uid,
-      date_posted: new Date(),
-      status: "pending" as const, // Reviews are pending moderation by default
-    };
-
-    const newReview = await firebaseOperations.createReview(reviewData);
+      user_name: user.name || "Anonymous",
+      user_photo: user.picture || null,
+    });
 
     // Update location's average rating and review count
-    await firebaseOperations.updateLocationRating(validatedReview.location_id);
+    await adminFirebaseOperations.updateLocationRating(validatedReview.location_id);
 
     return NextResponse.json({
       success: true,
@@ -141,54 +138,112 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const locationId = searchParams.get("location_id");
-    const userId = searchParams.get("user_id");
-    const status = searchParams.get("status");
+    const url = new URL(request.url);
+    const status = url.searchParams.get("status");
+    
+    if (status) {
+      // Only allow moderators/admins to filter by status
+      try {
+        const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
+        if (!authResult.success || !authResult.user) {
+          return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+        }
+        
+        const roleCheck = requireRole(authResult.user, ["mod", "admin"]);
+        if (!roleCheck.success) {
+          return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+        }
+      } catch (authError) {
+        console.error("❌ Auth failed for status filtering:", authError);
+        return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      }
+      
+      try {
+        console.log(`🔍 Fetching reviews with status: ${status}`);
+        const reviews = await adminFirebaseOperations.getReviewsByStatus(status);
+        console.log(`✅ Found ${reviews.length} reviews with status: ${status}`);
+        return NextResponse.json({ success: true, data: reviews });
+      } catch (error) {
+        console.error(`❌ Error fetching reviews by status ${status}:`, error);
+        return NextResponse.json(
+          { success: false, error: `Failed to fetch ${status} reviews` },
+          { status: 500 }
+        );
+      }
+    }
+    
+    // Get all approved reviews for regular users (no auth required for public reviews)
+    try {
+      const reviews = await adminFirebaseOperations.getReviewsByStatus("approved");
+      return NextResponse.json({ success: true, data: reviews });
+    } catch (error) {
+      console.error("Error fetching all reviews:", error);
+      return NextResponse.json(
+        { success: false, error: "Failed to fetch reviews" },
+        { status: 500 }
+      );
+    }
+  } catch (error) {
+    console.error("Error in GET /api/reviews:", error);
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
 
-    // If status is provided without locationId, fetch all reviews with that status (for moderation)
-    if (status && !locationId) {
-      const reviews = await firebaseOperations.getReviewsByStatus(status);
-      return NextResponse.json({
-        success: true,
-        data: reviews,
-        count: reviews.length,
-      });
+// PATCH method for moderating reviews
+export async function PATCH(request: NextRequest) {
+  try {
+    // Verify authentication and role
+    const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+    
+    const roleCheck = requireRole(authResult.user, ["mod", "admin"]);
+    if (!roleCheck.success) {
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
 
-    if (!locationId) {
+    const { reviewId, action, moderatorId } = await request.json();
+
+    if (!reviewId || !action) {
       return NextResponse.json(
-        { success: false, error: "location_id is required when status is not provided" },
+        { success: false, error: "Review ID and action are required" },
         { status: 400 }
       );
     }
 
-    let reviews;
-    if (userId) {
-      // Get reviews for a specific user and location
-      reviews = await firebaseOperations.getReviewsByLocationAndUser(
-        locationId,
-        userId
+    if (!["approve", "reject"].includes(action)) {
+      return NextResponse.json(
+        { success: false, error: 'Action must be "approve" or "reject"' },
+        { status: 400 }
       );
-    } else {
-      // Get all reviews for a location
-      reviews = await firebaseOperations.getReviewsByLocation(locationId);
     }
 
-    // Filter by status if provided
-    if (status) {
-      reviews = reviews.filter((review: any) => review.status === status);
-    }
+    console.log(`🔄 Moderating review ${reviewId}: ${action}`);
+    const status = action === "approve" ? "approved" : "rejected";
+    const moderatedReview = await adminFirebaseOperations.updateReviewStatus(
+      reviewId,
+      status,
+      moderatorId || authResult.user.id
+    );
+    console.log(`✅ Review ${reviewId} ${action}d successfully`);
 
     return NextResponse.json({
       success: true,
-      data: reviews,
-      count: reviews.length,
+      data: moderatedReview,
+      message: `Review ${action}d successfully`,
     });
   } catch (error) {
-    console.error("Failed to fetch reviews:", error);
+    console.error("❌ Review moderation error:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to fetch reviews" },
+      { 
+        success: false, 
+        error: "Failed to moderate review",
+        details: error instanceof Error ? error.message : "Unknown error"
+      },
       { status: 500 }
     );
   }

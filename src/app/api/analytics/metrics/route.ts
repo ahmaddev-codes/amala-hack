@@ -20,14 +20,29 @@ export async function GET(request: NextRequest) {
       return submittedDate >= since;
     });
 
-    // Calculate submissions per day
+    // Calculate submissions per day - ensure consistent date generation
     const submissionsPerDay: Record<string, number> = {};
+    
+    // Initialize all days in the range with 0 to ensure consistency
+    for (let i = 0; i < days; i++) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateKey = date.toISOString().slice(0, 10);
+      submissionsPerDay[dateKey] = 0;
+    }
+    
+    // Add actual submissions
     recentLocations.forEach(loc => {
       const submittedAt = loc.submittedAt;
       if (submittedAt) {
         const submittedDate = submittedAt instanceof Date ? submittedAt : new Date(submittedAt);
-        const dateKey = submittedDate.toISOString().slice(0, 10);
-        submissionsPerDay[dateKey] = (submissionsPerDay[dateKey] || 0) + 1;
+        // Ensure we're using the current year
+        if (submittedDate.getFullYear() === new Date().getFullYear()) {
+          const dateKey = submittedDate.toISOString().slice(0, 10);
+          if (submissionsPerDay.hasOwnProperty(dateKey)) {
+            submissionsPerDay[dateKey] = (submissionsPerDay[dateKey] || 0) + 1;
+          }
+        }
       }
     });
 
@@ -61,6 +76,10 @@ export async function GET(request: NextRequest) {
     
     const avgTimeToApprovalHours = validApprovals > 0 ? totalHours / validApprovals : null;
 
+    // Calculate approved locations and reviews for analytics (not totals)
+    const approvedLocations = allLocations.filter(loc => loc.status === 'approved');
+    const approvedReviews = approvedLocations.reduce((acc, loc) => acc + (loc.reviewCount || 0), 0);
+
     // Simple event counts (we'll expand this later)
     const eventCounts: Record<string, number> = {
       'location_submitted': recentLocations.length,
@@ -80,7 +99,9 @@ export async function GET(request: NextRequest) {
         verificationRate,
         avgTimeToApprovalHours,
         dedupRate,
-        eventCounts
+        eventCounts,
+        approvedLocations, // Approved locations count for analytics
+        approvedReviews    // Reviews from approved locations for analytics
       }
     });
   } catch (error) {

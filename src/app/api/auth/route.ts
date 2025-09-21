@@ -13,18 +13,18 @@ export async function POST(request: NextRequest) {
 // GET /api/auth/user - Get current user info from Firebase token
 export async function GET(request: NextRequest) {
   try {
-    const user = await verifyBearerToken(request.headers.get("authorization") || undefined);
+    const result = await verifyBearerToken(request.headers.get("authorization") || undefined);
     
-    if (!user) {
+    if (!result.success || !result.user) {
       return NextResponse.json({ success: false, user: null }, { status: 401 });
     }
 
     return NextResponse.json({
       success: true,
       user: {
-        id: user.id,
-        email: user.email,
-        roles: user.roles,
+        id: result.user.id,
+        email: result.user.email,
+        roles: result.user.roles,
       },
     });
   } catch (error) {

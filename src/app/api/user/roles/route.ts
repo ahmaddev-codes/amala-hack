@@ -7,15 +7,17 @@ export async function POST(request: NextRequest) {
 
     // Verify Bearer token authentication
     const authHeader = request.headers.get("authorization");
-    const userInfo = await verifyBearerToken(authHeader || undefined);
+    const authResult = await verifyBearerToken(authHeader || undefined);
 
-    if (!userInfo) {
+    if (!authResult.success || !authResult.user) {
       console.log("❌ Invalid or missing Bearer token");
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
         { status: 401 }
       );
     }
+
+    const userInfo = authResult.user;
 
     console.log(
       "✅ Authenticated user:",

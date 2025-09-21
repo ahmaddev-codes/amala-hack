@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { firebaseOperations } from "@/lib/firebase/database";
-import { PlacesApiNewService } from "@/lib/services/places-api-new";
+import { PlacesApiNewService } from "@/lib/services/places-api";
+import { BatchedPlacesApiService } from "@/lib/services/places-api-batch";
+import { memoryCache, CacheKeys } from "@/lib/cache/memory-cache";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,8 +26,22 @@ export async function POST(request: NextRequest) {
 
     console.log(`🔍 Enriching location: ${name} at ${address}`);
 
-    // Find place ID using Places API
-    const placeId = await PlacesApiNewService.findPlaceId(
+    // PERFORMANCE: Check cache first to avoid redundant enrichment
+    const cacheKey = CacheKeys.locationEnrichment(locationId);
+    if (!forceRefresh) {
+      const cachedEnrichment = memoryCache.get(cacheKey);
+      if (cachedEnrichment) {
+        console.log(`⚡ Using cached enrichment for ${name}`);
+        return NextResponse.json({
+          success: true,
+          data: cachedEnrichment,
+          cached: true
+        });
+      }
+    }
+
+    // PERFORMANCE: Use batched API service for better caching and rate limiting
+    const placeId = await BatchedPlacesApiService.findPlaceId(
       address,
       googleApiKey
     );
@@ -39,8 +55,8 @@ export async function POST(request: NextRequest) {
 
     console.log(`🎯 Found place ID: ${placeId}`);
 
-    // Get detailed information from Places API
-    const details = await PlacesApiNewService.getPlaceDetails(
+    // PERFORMANCE: Use batched API service for place details
+    const details = await BatchedPlacesApiService.getPlaceDetails(
       placeId,
       googleApiKey
     );
@@ -156,7 +172,6 @@ export async function POST(request: NextRequest) {
             console.error("❌ Failed to insert review:", reviewError);
           }
         }
-        console.log(`✅ Inserted ${reviewsToInsert.length} reviews`);
       }
 
       // Update the location with enriched data
@@ -179,14 +194,18 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ Successfully enriched ${name} with Places API data`);
 
+    // PERFORMANCE: Cache the enrichment result for 7 days
+    const enrichmentResult = {
+      locationId,
+      placeId,
+      enrichedData,
+      updatedLocation,
+    };
+    memoryCache.set(cacheKey, enrichmentResult, 7 * 24 * 60 * 60 * 1000); // 7 days
+
     return NextResponse.json({
       success: true,
-      data: {
-        locationId,
-        placeId,
-        enrichedData,
-        updatedLocation,
-      },
+      data: enrichmentResult,
     });
   } catch (error) {
     console.error("❌ Enrichment error:", error);

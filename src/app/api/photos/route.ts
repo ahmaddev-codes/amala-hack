@@ -1,9 +1,8 @@
-// Photo upload API - Handle restaurant photo uploads with Firebase
+// Photo upload API - Handle restaurant photo uploads with Cloudinary
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit, verifyBearerToken } from "@/lib/auth";
 import { firebaseOperations } from "@/lib/firebase/database";
-import { storage } from "@/lib/firebase/config";
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import cloudinary, { getUploadOptions } from "@/lib/cloudinary/config";
 import { collection, addDoc, query, where, getDocs, orderBy, limit as firestoreLimit, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase/config';
 
@@ -27,13 +26,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is authenticated
-    const user = await verifyBearerToken(request.headers.get("authorization"));
-    if (!user) {
+    const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
         { success: false, error: "You must be signed in to upload photos" },
         { status: 401 }
       );
     }
+    
+    const user = authResult.user;
 
     const formData = await request.formData();
     const file = formData.get("photo") as File;
@@ -77,20 +78,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate unique filename
-    const fileExt = file.name.split(".").pop();
-    const fileName = `restaurant-photos/${locationId}/${user.id}/${Date.now()}.${fileExt}`;
+    // Generate unique public ID for Cloudinary
+    const publicId = `restaurant_photos/${locationId}/${user.id}/${Date.now()}_${Math.random()
+      .toString(36)
+      .substring(7)}`;
 
     try {
-      // Upload to Firebase Storage
-      const storageRef = ref(storage, fileName);
-      const fileBuffer = await file.arrayBuffer();
-      const uploadResult = await uploadBytes(storageRef, fileBuffer, {
-        contentType: file.type,
+      // Convert File to Buffer for Cloudinary
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      
+      // Upload to Cloudinary
+      const uploadResult = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          getUploadOptions('amala-restaurant-photos', publicId),
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(buffer);
       });
-
-      // Get download URL
-      const downloadURL = await getDownloadURL(uploadResult.ref);
+      
+      const result = uploadResult as any;
+      const downloadURL = result.secure_url;
 
       // Save photo metadata to Firestore
       const photosRef = collection(db, 'restaurant_photos');
@@ -101,9 +111,11 @@ export async function POST(request: NextRequest) {
         uploader_name: user.email?.split('@')[0] || "Anonymous",
         photo_url: downloadURL,
         caption: caption || null,
-        file_name: fileName,
+        cloudinary_public_id: result.public_id,
         file_size: file.size,
         content_type: file.type,
+        width: result.width,
+        height: result.height,
         status: "approved", // Auto-approve for now, can add moderation later
         created_at: Timestamp.now(),
         createdAt: Timestamp.now(),
@@ -135,9 +147,9 @@ export async function POST(request: NextRequest) {
         message: "Photo uploaded successfully!",
       });
     } catch (uploadError) {
-      console.error("Photo upload error:", uploadError);
+      console.error("Cloudinary photo upload error:", uploadError);
       return NextResponse.json(
-        { success: false, error: "Failed to upload photo" },
+        { success: false, error: "Failed to upload photo to Cloudinary" },
         { status: 500 }
       );
     }

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { firebaseOperations } from "@/lib/firebase/database";
+import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
 import { AmalaLocation, LocationFilter, Review } from "@/types/location";
-import { rateLimit } from "@/lib/auth";
+import { rateLimit, verifyBearerToken } from "@/lib/auth";
 import {
   LocationSubmissionSchema,
   LocationQuerySchema,
@@ -10,7 +11,8 @@ import {
 } from "@/lib/validation/location-schemas";
 import { checkForDuplicatesWithReasons } from "@/lib/database/dedup-helper";
 import { logAnalyticsEvent } from "@/lib/utils";
-import { PlacesApiNewService } from "@/lib/services/places-api-new";
+import { PlacesApiNewService } from "@/lib/services/places-api";
+import { BatchedPlacesApiService } from "@/lib/services/places-api-batch";
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest) {
       ) as LocationQueryOutput;
     } catch (error: any) {
       const errorMessages =
-        error.errors
+        error.issues
           ?.map((err: any) => `${err.path.join(".")}: ${err.message}`)
           .join(", ") || "Invalid query parameters";
       return NextResponse.json(
@@ -70,6 +72,12 @@ export async function GET(request: NextRequest) {
     const statusParam = searchParams.get("status");
     const includeAll = searchParams.get("includeAll") === "true";
     
+    // PERFORMANCE: Add pagination support
+    const page = parseInt(searchParams.get("page") || "0");
+    const limit = parseInt(searchParams.get("limit") || "50"); // Default 50 items per page
+    const maxLimit = includeAll ? 1000 : 100; // Allow higher limit for admin views
+    const actualLimit = Math.min(limit, maxLimit);
+    
     // Validate status parameter
     const validStatuses = ["pending", "approved", "rejected"] as const;
     const status = statusParam && validStatuses.includes(statusParam as any) 
@@ -78,13 +86,13 @@ export async function GET(request: NextRequest) {
     
     let locations;
     if (includeAll) {
-      // Get all locations regardless of status (for admin/scout views)
-      locations = await firebaseOperations.getAllLocations(filters);
+      // PERFORMANCE: Paginate all locations for admin/scout views
+      locations = await adminFirebaseOperations.getLocationsPaginated(actualLimit, page * actualLimit);
     } else if (status) {
-      // Get locations with specific status (for moderation)
-      locations = await firebaseOperations.getLocationsByStatus(status);
+      // PERFORMANCE: Paginate locations with specific status
+      locations = await adminFirebaseOperations.getLocationsByStatusPaginated(status, actualLimit, page * actualLimit);
     } else {
-      // Default: get only approved locations
+      // Default: get only approved locations (already has filtering)
       locations = await firebaseOperations.getLocations(filters);
     }
 
@@ -96,26 +104,41 @@ export async function GET(request: NextRequest) {
     if (googleApiKey) {
       locations = await Promise.all(
         locations.map(async (location) => {
-          // Skip if already enriched (more aggressive: enrich if missing rating/images or default serviceType)
+          // PERFORMANCE OPTIMIZATION: Skip if recently enriched (within 7 days)
+          const ENRICHMENT_CACHE_DAYS = 7;
+          const enrichmentCacheMs = ENRICHMENT_CACHE_DAYS * 24 * 60 * 60 * 1000;
+          
+          if (
+            location.lastEnriched && 
+            (Date.now() - new Date(location.lastEnriched).getTime()) < enrichmentCacheMs
+          ) {
+            console.log(`⚡ Skipping enrichment for ${location.name} - recently enriched`);
+            return location;
+          }
+
+          // Skip if already well-enriched (has rating, images, and specific serviceType)
           if (
             location.rating &&
             location.images &&
             location.images.length > 0 &&
-            location.serviceType !== "both"
+            location.serviceType !== "both" &&
+            location.lastEnriched // Must have been enriched at least once
           ) {
             return location;
           }
 
-          const placeId = await PlacesApiNewService.findPlaceId(
-            location.address,
-            googleApiKey
-          );
-          if (!placeId) return location;
+          try {
+            // PERFORMANCE: Use batched API service to reduce costs
+            const placeId = await BatchedPlacesApiService.findPlaceId(
+              location.address,
+              googleApiKey
+            );
+            if (!placeId) return location;
 
-          const details = await PlacesApiNewService.getPlaceDetails(
-            placeId,
-            googleApiKey
-          );
+            const details = await BatchedPlacesApiService.getPlaceDetails(
+              placeId,
+              googleApiKey
+            );
           if (!details) return location;
 
           // Generate images
@@ -183,7 +206,7 @@ export async function GET(request: NextRequest) {
           // Phone and website
           const phone = details.nationalPhoneNumber || location.phone;
           const website = details.websiteUri || location.website;
-          const description = location.description; // Places API (New) doesn't have editorial summary in basic fields
+          const description = location.description;
           const coordinates = details.location
             ? {
                 lat: details.location.latitude,
@@ -204,7 +227,14 @@ export async function GET(request: NextRequest) {
             website,
             description,
             coordinates,
+            lastEnriched: new Date(), // PERFORMANCE: Track enrichment time
+            enrichmentSource: 'google-places-api'
           };
+          } catch (enrichmentError) {
+            console.error(`❌ Failed to enrich location ${location.name}:`, enrichmentError);
+            // Return the original location if enrichment fails
+            return location;
+          }
         })
       );
     }
@@ -237,12 +267,26 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limit submissions per IP
-    const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      request.headers.get("x-real-ip") ||
-      "unknown";
-    const rl = rateLimit(`locations:post:${ip}`, 10, 60_000);
+    // Verify authentication for location submission
+    const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
+    if (!authResult.success) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required for location submission" },
+        { status: 401 }
+      );
+    }
+
+    const { user } = authResult;
+    
+    if (!user?.email) {
+      return NextResponse.json(
+        { success: false, error: "User email is required for location submission" },
+        { status: 400 }
+      );
+    }
+
+    // Rate limit submissions per user
+    const rl = rateLimit(`locations:post:${user.email}`, 10, 60_000);
     if (!rl.allowed) {
       return NextResponse.json(
         { success: false, error: "Rate limit exceeded. Try again later." },
@@ -259,7 +303,7 @@ export async function POST(request: NextRequest) {
       validatedLocation = LocationSubmissionSchema.parse(location);
     } catch (error: any) {
       const errorMessages =
-        error.errors
+        error.issues
           ?.map((err: any) => `${err.path.join(".")}: ${err.message}`)
           .join(", ") || "Validation failed";
       return NextResponse.json(
@@ -300,15 +344,22 @@ export async function POST(request: NextRequest) {
       "🔑 Server-side Google API Key:",
       googleApiKey ? googleApiKey.substring(0, 20) + "..." : "undefined"
     );
+    
+    if (!googleApiKey) {
+      console.warn("⚠️ Google Maps API key not found - skipping location enrichment");
+    }
+    
     let enrichedLocation = { ...validatedLocation };
 
     if (googleApiKey && validatedLocation.address) {
-      const placeId = await PlacesApiNewService.findPlaceId(
-        validatedLocation.address,
-        googleApiKey
+      try {
+        // PERFORMANCE: Use batched API service for location submission
+        const placeId = await BatchedPlacesApiService.findPlaceId(
+          validatedLocation.address,
+          googleApiKey
       );
       if (placeId) {
-        const details = await PlacesApiNewService.getPlaceDetails(
+        const details = await BatchedPlacesApiService.getPlaceDetails(
           placeId,
           googleApiKey
         );
@@ -367,6 +418,10 @@ export async function POST(request: NextRequest) {
           };
         }
       }
+      } catch (enrichmentError) {
+        console.error("❌ Failed to enrich location with Google Places data:", enrichmentError);
+        // Continue with original data if enrichment fails
+      }
     }
 
     // Add submission metadata with required fields and defaults
@@ -388,6 +443,7 @@ export async function POST(request: NextRequest) {
       hours: enrichedLocation.hours ?? defaultHours,
       status: "pending",
       discoverySource: "user-submitted",
+      submittedBy: user.email, // Track who submitted the location
     } as any;
 
     // Ensure coordinates are provided
@@ -405,12 +461,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const newLocation = await firebaseOperations.createLocation(locationData);
+    const newLocation = await adminFirebaseOperations.createLocation(locationData);
 
-    // Log analytics
+    // Log analytics with submitter tracking
     await logAnalyticsEvent("location_submitted", newLocation.id, {
       name: newLocation.name,
       source: locationData.discoverySource,
+      submittedBy: user.email,
       hasCoordinates: !!newLocation.coordinates,
       hasImages: (newLocation.images?.length || 0) > 0,
     });
