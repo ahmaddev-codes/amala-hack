@@ -112,12 +112,14 @@ export function Header({
     const headerElement = inputElement.closest('header');
     const headerRect = headerElement ? headerElement.getBoundingClientRect() : rect;
     
-    // Calculate optimal width - use full viewport width on mobile, constrained on desktop
+    // Calculate optimal width - match header width exactly, with small padding
     const isMobile = viewportWidth < 640;
-    const dropdownWidth = isMobile ? viewportWidth - 32 : Math.min(600, viewportWidth - 32);
+    const dropdownWidth = isMobile 
+      ? Math.min(viewportWidth - 32, headerRect.width) 
+      : headerRect.width - 8; // Match header width minus small padding
     
-    // Position dropdown immediately below the header, not the input
-    const left = isMobile ? 16 : Math.max(16, headerRect.left);
+    // Position dropdown to align with header left edge
+    const left = isMobile ? Math.max(16, headerRect.left) : headerRect.left + 4;
     
     // Position immediately below header with minimal gap
     const topPosition = headerRect.bottom + 2;
@@ -187,7 +189,7 @@ export function Header({
             {showSearchResults && searchResults.length > 0 && (
               <div
                 id="search-results"
-                className="fixed bg-white rounded-lg shadow-xl border border-gray-200 max-h-60 overflow-y-auto z-[100]"
+                className="fixed bg-white rounded-lg shadow-xl border border-gray-200 max-h-60 overflow-y-auto z-50 backdrop-blur-sm"
                 style={{ 
                   top: `${dropdownPosition.top}px`,
                   left: `${dropdownPosition.left}px`,
