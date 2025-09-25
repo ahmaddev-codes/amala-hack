@@ -107,29 +107,29 @@ export function Header({
     const rect = inputElement.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    
+
     // Find the header container to position dropdown immediately below it
     const headerElement = inputElement.closest('header');
     const headerRect = headerElement ? headerElement.getBoundingClientRect() : rect;
-    
+
     // Calculate optimal width - match header width exactly, with small padding
     const isMobile = viewportWidth < 640;
-    const dropdownWidth = isMobile 
-      ? Math.min(viewportWidth - 32, headerRect.width) 
+    const dropdownWidth = isMobile
+      ? Math.min(viewportWidth - 32, headerRect.width)
       : headerRect.width - 8; // Match header width minus small padding
-    
+
     // Position dropdown to align with header left edge
     const left = isMobile ? Math.max(16, headerRect.left) : headerRect.left + 4;
-    
+
     // Position immediately below header with minimal gap
     const topPosition = headerRect.bottom + 2;
-    
+
     // Ensure dropdown doesn't go off screen vertically
     const dropdownHeight = 240; // max-h-60 = 240px
-    const adjustedTop = topPosition + dropdownHeight > viewportHeight 
-      ? Math.max(16, headerRect.top - dropdownHeight - 2) 
+    const adjustedTop = topPosition + dropdownHeight > viewportHeight
+      ? Math.max(16, headerRect.top - dropdownHeight - 2)
       : topPosition;
-    
+
     setDropdownPosition({
       top: adjustedTop,
       left,
@@ -185,49 +185,6 @@ export function Header({
               )}
             </div>
 
-            {/* Search results dropdown */}
-            {showSearchResults && searchResults.length > 0 && (
-              <div
-                id="search-results"
-                className="fixed bg-white rounded-lg shadow-xl border border-gray-200 max-h-60 overflow-y-auto z-50 backdrop-blur-sm"
-                style={{ 
-                  top: `${dropdownPosition.top}px`,
-                  left: `${dropdownPosition.left}px`,
-                  width: `${dropdownPosition.width}px`
-                }}
-                role="listbox"
-                aria-label="Search results"
-              >
-                <div className="py-1">
-                  {searchResults.map((result, index) => (
-                    <button
-                      key={result.id}
-                      onClick={() => handleSearchResultClick(result.id)}
-                      className="w-full text-left px-3 py-2 hover:bg-gray-50 focus:bg-blue-50 focus:outline-none transition-colors duration-200"
-                      role="option"
-                      aria-selected="false"
-                      tabIndex={0}
-                    >
-                      <div className="flex items-center gap-2">
-                        <MapPinIcon className="w-3 h-3 text-gray-500 flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-gray-900 truncate text-sm">
-                            {result.name}
-                          </div>
-                          <div className="text-xs text-gray-600 truncate">
-                            {result.address}
-                          </div>
-                        </div>
-                        <div
-                          className={`w-2 h-2 rounded-full flex-shrink-0 ${result.isOpenNow ? "bg-green-500" : "bg-red-500"
-                            }`}
-                        />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Action buttons */}
@@ -254,6 +211,50 @@ export function Header({
           </div>
         </div>
       </header>
+
+      {/* Search results dropdown */}
+      {showSearchResults && searchResults.length > 0 && (
+        <div
+          id="search-results"
+          className="fixed bg-white rounded-lg shadow-xl border border-gray-200 max-h-60 overflow-y-auto z-[9998] backdrop-blur-sm"
+          style={{
+            top: `${dropdownPosition.top}px`,
+            left: `${dropdownPosition.left}px`,
+            width: `${dropdownPosition.width}px`
+          }}
+          role="listbox"
+          aria-label="Search results"
+        >
+          <div className="py-1">
+            {searchResults.map((result, index) => (
+              <button
+                key={result.id}
+                onClick={() => handleSearchResultClick(result.id)}
+                className="w-full text-left px-3 py-2 hover:bg-gray-50 focus:bg-blue-50 focus:outline-none transition-colors duration-200"
+                role="option"
+                aria-selected="false"
+                tabIndex={0}
+              >
+                <div className="flex items-center gap-2">
+                  <MapPinIcon className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-gray-900 truncate text-sm">
+                      {result.name}
+                    </div>
+                    <div className="text-xs text-gray-600 truncate">
+                      {result.address}
+                    </div>
+                  </div>
+                  <div
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${result.isOpenNow ? "bg-green-500" : "bg-red-500"
+                      }`}
+                  />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </>
   );
 }
