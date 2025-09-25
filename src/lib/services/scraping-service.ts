@@ -1,4 +1,4 @@
-import { AmalaLocation, Review } from "@/types/location";
+import { AmalaLocation } from "@/types/location";
 import puppeteer from "puppeteer";
 import axios from "axios";
 import { randomUUID } from "node:crypto";
@@ -38,7 +38,7 @@ export interface DiscoverySource {
 export class WebScrapingService {
   private static readonly DISCOVERY_SOURCES: DiscoverySource[] = [
     {
-      name: "Google Places API",
+      name: "Google Places API (New)",
       baseUrl: "https://places.googleapis.com/v1/places",
       searchEndpoint: ":searchText",
       type: "api",
@@ -58,6 +58,37 @@ export class WebScrapingService {
       type: "api",
       enabled: true,
     },
+  ];
+
+  // Global search queries for Nigerian/Amala restaurants
+  private static readonly GLOBAL_SEARCH_QUERIES = [
+    // Nigeria-specific
+    "Amala restaurant Lagos Nigeria",
+    "Nigerian restaurant Amala Ibadan",
+    "Yoruba food restaurant Abuja",
+    "Ewedu Gbegiri restaurant Lagos",
+    "Traditional Nigerian restaurant Kano",
+    
+    // UK/Europe
+    "Nigerian restaurant London Amala",
+    "West African food Manchester",
+    "Yoruba cuisine Birmingham UK",
+    "Nigerian restaurant Berlin Germany",
+    "African food Paris France",
+    
+    // USA/Canada
+    "Nigerian restaurant New York Amala",
+    "West African food Houston Texas",
+    "Nigerian cuisine Atlanta Georgia",
+    "African restaurant Toronto Canada",
+    "Yoruba food Vancouver Canada",
+    
+    // Australia/Other
+    "Nigerian restaurant Sydney Australia",
+    "West African food Melbourne",
+    "African cuisine Dubai UAE",
+    "Nigerian restaurant Johannesburg",
+    "Yoruba food restaurant worldwide",
   ];
 
   private static readonly SCRAPING_TARGETS: ScrapingTarget[] = [
@@ -322,11 +353,92 @@ export class WebScrapingService {
     },
   ];
 
+  /**
+   * Discover locations using Google Places API (New)
+   */
+  static async discoverWithGooglePlaces(): Promise<AmalaLocation[]> {
+    const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    
+    if (!GOOGLE_MAPS_API_KEY) {
+      console.log("Google Maps API key not configured, skipping Places API discovery");
+      return [];
+    }
+
+    try {
+      const discoveredLocations: AmalaLocation[] = [];
+      
+      // Use a subset of search queries to avoid hitting rate limits
+      const searchQueries = this.GLOBAL_SEARCH_QUERIES.slice(0, 10);
+      
+      for (const query of searchQueries) {
+        try {
+          console.log(`🔍 Searching Google Places for: "${query}"`);
+          
+          const places = await PlacesApiNewService.textSearch(query, GOOGLE_MAPS_API_KEY);
+          
+          for (const place of places) {
+            // Convert to AmalaLocation format
+            const amalaLocation = PlacesApiNewService.convertToAmalaLocation(place);
+            
+            // Validate the location
+            const validation = await this.validateDiscoveredLocation(amalaLocation);
+            
+            if (validation.isValid && validation.confidence > 0.6) {
+              discoveredLocations.push({
+                id: randomUUID(),
+                ...amalaLocation,
+                status: "pending",
+                submittedAt: new Date(),
+                discoverySource: "google-places-api",
+                sourceUrl: `https://maps.google.com/place/${place.id}`,
+                // Ensure required fields have defaults
+                name: amalaLocation.name || "Unknown Location",
+                address: amalaLocation.address || "Address not specified",
+                coordinates: amalaLocation.coordinates || {
+                  lat: 6.5244,
+                  lng: 3.3792,
+                },
+                isOpenNow: amalaLocation.isOpenNow ?? false,
+                serviceType: amalaLocation.serviceType || "both",
+                priceMin: amalaLocation.priceMin || 150000,
+                priceMax: amalaLocation.priceMax || 400000,
+                currency: amalaLocation.currency || "NGN",
+                priceInfo: amalaLocation.priceInfo || "₦1,500-4,000 per person",
+                cuisine: amalaLocation.cuisine || ["Nigerian"],
+                dietary: amalaLocation.dietary || [],
+                features: amalaLocation.features || [],
+                hours: amalaLocation.hours || this.generateDefaultHours(),
+              } as AmalaLocation);
+            }
+          }
+          
+          // Small delay between queries to respect rate limits
+          await this.delay(1000);
+          
+        } catch (error) {
+          console.error(`Failed to search for "${query}":`, error);
+          continue;
+        }
+      }
+      
+      console.log(`✅ Google Places API discovered ${discoveredLocations.length} locations`);
+      return discoveredLocations;
+      
+    } catch (error) {
+      console.error("Google Places API discovery failed:", error);
+      return [];
+    }
+  }
+
   static async discoverLocations(): Promise<AmalaLocation[]> {
     try {
       const discoveredLocations: AmalaLocation[] = [];
 
-      // Iterate through real scraping targets
+      // First, try Google Places API (New) discovery
+      const placesLocations = await this.discoverWithGooglePlaces();
+      discoveredLocations.push(...placesLocations);
+
+      // Then, iterate through web scraping targets as fallback/supplement
       for (const target of this.SCRAPING_TARGETS) {
         try {
           const locations = await this.scrapeSpecificSite(target);
@@ -753,25 +865,92 @@ export class WebScrapingService {
   }
 
   private static mapToPriceLevel(
-    realPrice: string
-  ): "$" | "$$" | "$$$" | "$$$$" {
-    if (!realPrice) return "$$";
-    const numMatch = realPrice.match(/₦(\d+)/);
-    if (numMatch) {
-      const price = parseInt(numMatch[1]);
-      if (price < 2000) return "$";
-      if (price < 5000) return "$$";
-      if (price < 10000) return "$$$";
-      return "$$$$";
+    realPrice: string,
+    address?: string
+  ): string {
+    const currency = this.getCurrencyByLocation(address);
+    
+    if (!realPrice) return `${currency.symbol}${currency.low} - ${currency.symbol}${currency.moderate}`;
+    
+    // If already formatted with currency, return as is
+    if (realPrice.includes(currency.symbol) && realPrice.includes("-")) {
+      return realPrice;
     }
-    return "$$";
+    
+    // Extract numeric value from price text
+    const numMatch = realPrice.match(/[\d,]+/);
+    if (numMatch) {
+      const price = parseInt(numMatch[0].replace(/,/g, ""));
+      
+      // Convert to appropriate currency range based on location
+      if (price < currency.low) return `${currency.symbol}${price} - ${currency.symbol}${Math.min(price + currency.low/2, currency.moderate)}`;
+      if (price < currency.moderate) return `${currency.symbol}${price} - ${currency.symbol}${Math.min(price + currency.moderate/2, currency.high)}`;
+      if (price < currency.high) return `${currency.symbol}${price} - ${currency.symbol}${Math.min(price + currency.high/2, currency.veryHigh)}`;
+      return `${currency.symbol}${price}+`;
+    }
+    
+    return `${currency.symbol}${currency.low} - ${currency.symbol}${currency.moderate}`;
+  }
+
+  /**
+   * Get currency and price ranges based on location (same as Places API service)
+   */
+  private static getCurrencyByLocation(address?: string): {
+    symbol: string;
+    code: string;
+    low: number;
+    moderate: number;
+    high: number;
+    veryHigh: number;
+  } {
+    if (!address) {
+      return { symbol: "₦", code: "NGN", low: 500, moderate: 2000, high: 5000, veryHigh: 10000 };
+    }
+
+    const lowerAddress = address.toLowerCase();
+
+    // Nigeria
+    if (lowerAddress.includes("nigeria") || lowerAddress.includes("lagos") || 
+        lowerAddress.includes("abuja") || lowerAddress.includes("ibadan")) {
+      return { symbol: "₦", code: "NGN", low: 500, moderate: 2000, high: 5000, veryHigh: 10000 };
+    }
+
+    // UK
+    if (lowerAddress.includes("uk") || lowerAddress.includes("united kingdom") || 
+        lowerAddress.includes("london") || lowerAddress.includes("manchester") ||
+        lowerAddress.includes("birmingham") || lowerAddress.includes("england")) {
+      return { symbol: "£", code: "GBP", low: 8, moderate: 15, high: 25, veryHigh: 40 };
+    }
+
+    // USA
+    if (lowerAddress.includes("usa") || lowerAddress.includes("united states") || 
+        lowerAddress.includes("new york") || lowerAddress.includes("houston") ||
+        lowerAddress.includes("atlanta") || lowerAddress.includes("chicago")) {
+      return { symbol: "$", code: "USD", low: 10, moderate: 20, high: 35, veryHigh: 50 };
+    }
+
+    // Canada
+    if (lowerAddress.includes("canada") || lowerAddress.includes("toronto") || 
+        lowerAddress.includes("vancouver") || lowerAddress.includes("montreal")) {
+      return { symbol: "C$", code: "CAD", low: 12, moderate: 25, high: 40, veryHigh: 60 };
+    }
+
+    // Australia
+    if (lowerAddress.includes("australia") || lowerAddress.includes("sydney") || 
+        lowerAddress.includes("melbourne") || lowerAddress.includes("brisbane")) {
+      return { symbol: "A$", code: "AUD", low: 15, moderate: 25, high: 40, veryHigh: 60 };
+    }
+
+    // Default to Naira for unknown locations
+    return { symbol: "₦", code: "NGN", low: 500, moderate: 2000, high: 5000, veryHigh: 10000 };
   }
 
   private static mapExtractedPrice(
-    priceText: string
-  ): "$" | "$$" | "$$$" | "$$$$" {
+    priceText: string,
+    address?: string
+  ): string {
     const realPrice = WebScrapingService.extractRealPrice(priceText);
-    return WebScrapingService.mapToPriceLevel(realPrice || priceText);
+    return WebScrapingService.mapToPriceLevel(realPrice || priceText, address);
   }
 
   static async validateDiscoveredLocation(
