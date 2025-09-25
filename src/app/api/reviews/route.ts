@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
             user_id: user.uid,
             user_name: user.name || "Anonymous",
             description: `Photo from review: ${validatedReview.text?.substring(0, 100) || 'User review'}`,
-            status: 'approved' // Auto-approve photos from reviews
+            status: 'pending' // Photos from reviews also need moderation
           });
         }
         console.log(`✅ Successfully added ${validatedReview.photos.length} photos to location`);

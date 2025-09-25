@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
         cloudinary_url: downloadURL,
         cloudinary_public_id: result.public_id,
         description: caption || "",
-        status: "approved", // Auto-approve for now, can add moderation later
+        status: "pending", // Photos require moderation before publication
       });
 
       // Log analytics event using admin SDK
@@ -129,9 +129,9 @@ export async function POST(request: NextRequest) {
           id: photoId,
           url: downloadURL,
           caption: caption,
-          status: "approved",
+          status: "pending",
         },
-        message: "Photo uploaded successfully!",
+        message: "Photo uploaded and submitted for moderation!",
       });
     } catch (uploadError) {
       console.error("Cloudinary photo upload error:", uploadError);
