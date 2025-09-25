@@ -888,7 +888,7 @@ export function GoogleMapsLocationDetail({
                 ))}
               </div>
               <span className="text-sm text-gray-600">
-                {location.rating} ({location.reviewCount || locationReviews.length} reviews)
+                {location.rating} ({reviews.length} reviews)
               </span>
             </div>
           )}
