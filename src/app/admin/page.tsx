@@ -156,17 +156,6 @@ function AdminPageContent() {
     }
   }, [activeTab, user]);
 
-  // Filter functions
-  const applyFilters = () => {
-    // Implement filter logic
-    console.log('Applying filters...');
-  };
-
-  const clearAllFilters = () => {
-    // Clear all applied filters and reset to default view
-    setActiveTab('overview');
-    console.log('All filters cleared, returning to overview');
-  };
 
   const sidebarItems = [
     { id: "overview", label: "Overview", icon: ChartBar },
@@ -210,97 +199,6 @@ function AdminPageContent() {
                 <h1 className="text-3xl font-bold text-gray-900">User Management</h1>
                 <div className="text-sm text-gray-500">
                   Manage user roles and permissions
-                </div>
-              </div>
-
-              {/* User Filters */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900">Filters & Search</h2>
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-500">Active filters:</span>
-                    <div className="flex items-center space-x-1">
-                      <span className="text-xs text-gray-400">None</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  {/* Search */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Search Users
-                    </label>
-                    <div className="relative">
-                      <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Email or name..."
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                        disabled
-                      />
-                    </div>
-                  </div>
-
-                  {/* Role Filter */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Filter by Role
-                    </label>
-                    <select
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      disabled
-                    >
-                      <option value="">All Roles</option>
-                    </select>
-                  </div>
-
-                  {/* Registration Date */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Registration Date
-                    </label>
-                    <select
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      disabled
-                    >
-                      <option value="">Any Date</option>
-                    </select>
-                  </div>
-
-                  {/* Sort By */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Sort By
-                    </label>
-                    <select
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                      disabled
-                    >
-                      <option value="createdAt-desc">Newest First</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Filter Actions */}
-                <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
-                  <div className="flex items-center space-x-3">
-                    <button
-                      onClick={applyFilters}
-                      className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
-                    >
-                      Apply Filters
-                    </button>
-                    <button
-                      onClick={clearAllFilters}
-                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors font-medium"
-                    >
-                      Clear All
-                    </button>
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    Showing <span className="font-medium">0</span> of <span className="font-medium">0</span> users
-                  </div>
                 </div>
               </div>
 
