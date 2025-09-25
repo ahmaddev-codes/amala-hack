@@ -25,7 +25,7 @@ import {
 
 export default function Home() {
   const { success, info, error } = useToast();
-  const { isLoading: isAuthLoading } = useAuth();
+  const { isLoading: isAuthLoading, user, getIdToken } = useAuth();
   const analytics = useAnalytics();
   const [allLocations, setAllLocations] = useState<AmalaLocation[]>([]);
   const [isLoadingLocations, setIsLoadingLocations] = useState(true);
@@ -172,8 +172,28 @@ export default function Home() {
     return filtered;
   }, [allLocations, filters]);
 
+  const handleAddLocation = () => {
+    // Check if user is authenticated before opening the dialog
+    if (!user) {
+      error("Please log in to add locations to the platform", "Authentication Required");
+      return;
+    }
+    
+    // User is authenticated, open the dialog
+    setShowIntakeDialog(true);
+  };
+
   const handleLocationSubmit = async (locations: LocationResult[]) => {
     try {
+      // Get authentication token (user check already done in handleAddLocation)
+      const token = await getIdToken();
+      if (!token) {
+        error("Authentication failed. Please log in again.", "Authentication Error");
+        return;
+      }
+
+      info(`Submitting ${locations.length} location${locations.length > 1 ? 's' : ''} for review...`, "Submitting Locations");
+
       const submissionPromises = locations.map(async (location) => {
         const submission: LocationSubmission = {
           name: location.name,
@@ -191,7 +211,10 @@ export default function Home() {
 
         const response = await fetch("/api/locations", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
           body: JSON.stringify({
             location: submission,
             submitterInfo: {
@@ -227,8 +250,9 @@ export default function Home() {
 
       setShowIntakeDialog(false);
 
+      // Show single success message
       success(
-        `${locations.length} location${locations.length > 1 ? 's' : ''} submitted for moderation!`,
+        `${locations.length} location${locations.length > 1 ? 's' : ''} submitted successfully! They will be reviewed by moderators before appearing on the map.`,
         "Submission Successful"
       );
     } catch (err) {
@@ -318,7 +342,7 @@ export default function Home() {
           {/* Compact Header - fits within sidebar */}
           <div className="p-4 border-b border-gray-100">
             <Header
-              onAddLocation={() => setShowIntakeDialog(true)}
+              onAddLocation={handleAddLocation}
               onSearch={handleSearch}
               searchResults={searchResults.map((loc) => ({
                 id: loc.id,
@@ -495,7 +519,7 @@ export default function Home() {
       {/* Mobile Layout - floaty header */}
       <div className="sm:hidden fixed top-4 left-4 right-4 z-40">
         <Header
-          onAddLocation={() => setShowIntakeDialog(true)}
+          onAddLocation={handleAddLocation}
           onSearch={handleSearch}
           searchResults={searchResults.map((loc) => ({
             id: loc.id,
