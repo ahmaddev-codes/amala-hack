@@ -200,7 +200,7 @@ export class PlacesApiNewService {
       website: place.websiteUri,
       rating: place.rating,
       reviewCount: place.userRatingCount,
-      priceRange: this.convertPriceLevel(place.priceLevel),
+      priceRange: this.convertPriceLevel(place.priceLevel, place.formattedAddress),
       images: place.photos?.map((photo) => this.getPhotoUrl(photo.name)) || [],
       reviews:
         place.reviews?.map((review) => ({
@@ -220,23 +220,102 @@ export class PlacesApiNewService {
   }
 
   /**
-   * Convert price level from Places API (New) format
+   * Convert price level from Places API (New) format to actual price ranges
    */
-  private static convertPriceLevel(priceLevel: string): string {
+  private static convertPriceLevel(priceLevel: string, address?: string): string {
+    const currency = this.getCurrencyByLocation(address);
+    
     switch (priceLevel) {
       case "PRICE_LEVEL_FREE":
-        return "$";
+        return `${currency.symbol}0 - ${currency.symbol}${currency.low}`;
       case "PRICE_LEVEL_INEXPENSIVE":
-        return "$$";
+        return `${currency.symbol}${currency.low} - ${currency.symbol}${currency.moderate}`;
       case "PRICE_LEVEL_MODERATE":
-        return "$$$";
+        return `${currency.symbol}${currency.moderate} - ${currency.symbol}${currency.high}`;
       case "PRICE_LEVEL_EXPENSIVE":
-        return "$$$$";
+        return `${currency.symbol}${currency.high} - ${currency.symbol}${currency.veryHigh}`;
       case "PRICE_LEVEL_VERY_EXPENSIVE":
-        return "$$$$";
+        return `${currency.symbol}${currency.veryHigh}+`;
       default:
-        return "$$";
+        return `${currency.symbol}${currency.low} - ${currency.symbol}${currency.moderate}`;
     }
+  }
+
+  /**
+   * Get currency and price ranges based on location
+   */
+  private static getCurrencyByLocation(address?: string): {
+    symbol: string;
+    code: string;
+    low: number;
+    moderate: number;
+    high: number;
+    veryHigh: number;
+  } {
+    if (!address) {
+      return { symbol: "₦", code: "NGN", low: 500, moderate: 2000, high: 5000, veryHigh: 10000 };
+    }
+
+    const lowerAddress = address.toLowerCase();
+
+    // Nigeria
+    if (lowerAddress.includes("nigeria") || lowerAddress.includes("lagos") || 
+        lowerAddress.includes("abuja") || lowerAddress.includes("ibadan")) {
+      return { symbol: "₦", code: "NGN", low: 500, moderate: 2000, high: 5000, veryHigh: 10000 };
+    }
+
+    // UK
+    if (lowerAddress.includes("uk") || lowerAddress.includes("united kingdom") || 
+        lowerAddress.includes("london") || lowerAddress.includes("manchester") ||
+        lowerAddress.includes("birmingham") || lowerAddress.includes("england")) {
+      return { symbol: "£", code: "GBP", low: 8, moderate: 15, high: 25, veryHigh: 40 };
+    }
+
+    // USA
+    if (lowerAddress.includes("usa") || lowerAddress.includes("united states") || 
+        lowerAddress.includes("new york") || lowerAddress.includes("houston") ||
+        lowerAddress.includes("atlanta") || lowerAddress.includes("chicago")) {
+      return { symbol: "$", code: "USD", low: 10, moderate: 20, high: 35, veryHigh: 50 };
+    }
+
+    // Canada
+    if (lowerAddress.includes("canada") || lowerAddress.includes("toronto") || 
+        lowerAddress.includes("vancouver") || lowerAddress.includes("montreal")) {
+      return { symbol: "C$", code: "CAD", low: 12, moderate: 25, high: 40, veryHigh: 60 };
+    }
+
+    // Australia
+    if (lowerAddress.includes("australia") || lowerAddress.includes("sydney") || 
+        lowerAddress.includes("melbourne") || lowerAddress.includes("brisbane")) {
+      return { symbol: "A$", code: "AUD", low: 15, moderate: 25, high: 40, veryHigh: 60 };
+    }
+
+    // South Africa
+    if (lowerAddress.includes("south africa") || lowerAddress.includes("johannesburg") || 
+        lowerAddress.includes("cape town") || lowerAddress.includes("durban")) {
+      return { symbol: "R", code: "ZAR", low: 80, moderate: 150, high: 250, veryHigh: 400 };
+    }
+
+    // Germany
+    if (lowerAddress.includes("germany") || lowerAddress.includes("berlin") || 
+        lowerAddress.includes("munich") || lowerAddress.includes("hamburg")) {
+      return { symbol: "€", code: "EUR", low: 8, moderate: 15, high: 25, veryHigh: 40 };
+    }
+
+    // France
+    if (lowerAddress.includes("france") || lowerAddress.includes("paris") || 
+        lowerAddress.includes("lyon") || lowerAddress.includes("marseille")) {
+      return { symbol: "€", code: "EUR", low: 10, moderate: 18, high: 30, veryHigh: 45 };
+    }
+
+    // UAE
+    if (lowerAddress.includes("uae") || lowerAddress.includes("dubai") || 
+        lowerAddress.includes("abu dhabi") || lowerAddress.includes("emirates")) {
+      return { symbol: "AED", code: "AED", low: 25, moderate: 50, high: 80, veryHigh: 120 };
+    }
+
+    // Default to Naira for unknown locations
+    return { symbol: "₦", code: "NGN", low: 500, moderate: 2000, high: 5000, veryHigh: 10000 };
   }
 
   /**
