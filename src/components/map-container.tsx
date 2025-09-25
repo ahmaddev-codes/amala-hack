@@ -389,28 +389,6 @@ export function MapContainer({
             </div>
           </div>
 
-          <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-primary/20 transition-all duration-200 hover:shadow-xl hover:bg-white">
-            <h4 className="text-sm font-medium text-primary mb-2">
-              Map Legend
-            </h4>
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center hover:text-primary transition-colors duration-150">
-                <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                <span>Open Now</span>
-              </div>
-              <div className="flex items-center hover:text-primary transition-colors duration-150">
-                <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
-                <span>Closed</span>
-              </div>
-              <div className="flex items-center mt-2 hover:text-primary transition-colors duration-150">
-                <span className="text-green-600">$ </span>
-                <span className="text-yellow-600">$$ </span>
-                <span className="text-red-600">$$$ </span>
-                <span className="text-purple-600">$$$$</span>
-                <span className="ml-1">Price Range</span>
-              </div>
-            </div>
-          </div>
         </>
       )}
     </div>
