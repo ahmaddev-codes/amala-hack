@@ -305,4 +305,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **[🌍 Live Demo](https://amala-hack.vercel.app)** | **[📚 Documentation](https://github.com/ahmaddev-codes/amala-hack)** | **[🚀 Deploy Now](https://vercel.com/new/clone?repository-url=https://github.com/ahmaddev-codes/amala-hack)**
 
+---
+
+**Contributors & Maintainers**
+
+Maestro - [Tijani Ahmad](https://github.com/ahmaddev-codes) | Raging Fire - [Idris Azeez](https://github.com/hayzedid) | Phoenix - [Habeeb Oke](https://github.com/ahmaddev-codes)
+
 </div>
