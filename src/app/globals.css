@@ -312,3 +312,13 @@
 .animate-scale-pulse {
   animation: scale-pulse 2s ease-in-out infinite;
 }
+
+/* Hide scrollbars for horizontal scrolling filters */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* Internet Explorer 10+ */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Safari and Chrome */
+}

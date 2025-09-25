@@ -1,25 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Image from "next/image";
-import {
-  ArrowLeftIcon,
-  MapPinIcon as MapPin,
-  StarIcon as Star,
-  CurrencyDollarIcon as DollarSign,
-  PhoneIcon as Phone,
-  GlobeAltIcon as Globe,
-} from "@heroicons/react/24/outline";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { OptimizedImage } from "@/components/optimized-image";
 import { MapContainer } from "@/components/map-container";
 import { Header } from "@/components/header";
-import { MapUserProfile } from "@/components/map-user-profile";
 import { LocationSubmissionDialog } from "@/components/location-submission-dialog";
+import { MapUserProfile } from "@/components/map-user-profile";
 import { CentralFilters } from "@/components/central-filters";
-import { GoogleMapsLocationDetail } from "@/components/google-maps-location-detail";
+import { MobileBottomSheet } from "@/components/mobile-bottom-sheet";
 import { LoadingScreen } from "@/components/loading-screen";
+import { LocationSkeleton } from "@/components/location-skeleton";
 import { useToast } from "@/contexts/ToastContext";
 import { useAuth } from "@/contexts/FirebaseAuthContext";
 import { firebaseOperations } from "@/lib/firebase/database";
+import { useAnalytics } from "@/hooks/useAnalytics";
+import { GoogleMapsLocationDetail } from "@/components/google-maps-location-detail";
+import { StarIcon, MapPinIcon } from "@heroicons/react/24/outline";
 import {
   AmalaLocation,
   LocationFilter,
@@ -30,10 +26,8 @@ import {
 export default function Home() {
   const { success, info, error } = useToast();
   const { isLoading: isAuthLoading } = useAuth();
+  const analytics = useAnalytics();
   const [allLocations, setAllLocations] = useState<AmalaLocation[]>([]);
-  const [filteredLocations, setFilteredLocations] = useState<AmalaLocation[]>(
-    []
-  );
   const [isLoadingLocations, setIsLoadingLocations] = useState(true);
   const [filters, setFilters] = useState<LocationFilter>({});
   const [selectedLocation, setSelectedLocation] =
@@ -43,86 +37,140 @@ export default function Home() {
   const [pendingCount, setPendingCount] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  // Search functionality
-  const handleSearch = async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    const results = allLocations.filter(
-      (location) =>
-        location.name.toLowerCase().includes(query.toLowerCase()) ||
-        location.address.toLowerCase().includes(query.toLowerCase()) ||
-        location.description?.toLowerCase().includes(query.toLowerCase())
-    );
-    setSearchResults(results);
-  };
+  // Optimized search with debouncing and memoization
+  const handleSearch = useCallback(
+    async (query: string) => {
+      if (!query.trim()) {
+        setSearchResults([]);
+        return;
+      }
+
+      const lowerQuery = query.toLowerCase();
+      const results = allLocations.filter(
+        (location) =>
+          location.name.toLowerCase().includes(lowerQuery) ||
+          location.address.toLowerCase().includes(lowerQuery) ||
+          location.description?.toLowerCase().includes(lowerQuery)
+      );
+      
+      // Debug: Uncomment for search debugging
+      // console.log('🔍 Search results:', { query, resultsCount: results.length, totalLocations: allLocations.length });
+      
+      // Only update if results actually changed
+      setSearchResults(prevResults => {
+        if (prevResults.length !== results.length || 
+            !prevResults.every((prev, index) => prev.id === results[index]?.id)) {
+          return results;
+        }
+        return prevResults;
+      });
+
+      // Track search analytics
+      analytics.trackSearch(query, results.length, filters);
+    },
+    [allLocations, analytics, filters]
+  );
 
   const handleSearchResultSelect = (locationId: string) => {
     const location = allLocations.find((loc) => loc.id === locationId);
     if (location) {
       setSelectedLocation(location);
+      // Clear search results when a location is selected
+      setSearchResults([]);
+      // Track location view analytics
+      analytics.trackLocationView(location.id, location.name, 'search');
     }
   };
 
-  // Load locations from database
+  // Load locations from database with progressive loading
   useEffect(() => {
     const loadLocations = async () => {
       try {
-        console.log("🔄 Starting to load locations...");
-        // Don't set loading to true again since it starts as true
-        const locationsFromDb = await firebaseOperations.getAllLocations({});
-        const loadedLocations = locationsFromDb.filter(
-          (loc) => loc.status === "approved"
-        );
-        console.log(`✅ Loaded ${loadedLocations.length} approved locations`);
-        setAllLocations(loadedLocations);
-        setFilteredLocations(loadedLocations);
-        
-        // Load pending count for moderators/admins
-        const pendingLocations = locationsFromDb.filter(loc => loc.status === 'pending');
-        setPendingCount(pendingLocations.length);
+        console.log("🔄 Starting to load locations with pagination...");
+
+        // First, load minimal batch for immediate display (20 locations)
+        const initialLocations = await firebaseOperations.getLocations({
+          limit: 20
+        });
+        console.log(`✅ Loaded initial ${initialLocations.length} locations`);
+        setAllLocations(initialLocations);
+        setIsLoadingLocations(false); // Show initial content immediately
+
+        // Then load remaining locations in background but merge instead of replace
+        setTimeout(async () => {
+          try {
+            const allLocations = await firebaseOperations.getAllLocations({});
+            const approvedLocations = allLocations.filter(
+              (loc) => loc.status === "approved"
+            );
+            console.log(`✅ Loaded all ${approvedLocations.length} approved locations`);
+
+            // Merge new locations with existing ones instead of replacing
+            setAllLocations(prevLocations => {
+              const existingIds = new Set(prevLocations.map(loc => loc.id));
+              const newLocations = approvedLocations.filter(loc => !existingIds.has(loc.id));
+              return [...prevLocations, ...newLocations];
+            });
+
+            // Load pending count for moderators/admins
+            const pendingLocations = allLocations.filter(loc => loc.status === 'pending');
+            setPendingCount(pendingLocations.length);
+          } catch (error) {
+            console.error("❌ Error loading remaining locations:", error);
+          }
+        }, 500); // Load remaining after 0.5 seconds
+
       } catch (error) {
-        console.error("❌ Error loading locations:", error);
-      } finally {
+        console.error("❌ Error loading initial locations:", error);
         setIsLoadingLocations(false);
       }
     };
-    
+
     // Only load locations after auth is ready
     if (!isAuthLoading) {
       loadLocations();
     }
   }, [isAuthLoading]);
 
-  // Filter locations when filters change
+  // Track page view on component mount
   useEffect(() => {
-    if (Object.keys(filters).length === 0) {
-      setFilteredLocations(allLocations);
-      return;
+    analytics.trackPageView('Home - Map View', 'Amala Discovery Platform');
+  }, [analytics]);
+
+  // Memoized filtered locations to prevent unnecessary recalculations
+  const filteredLocations = useMemo(() => {
+    // Don't apply search filters to map - only to sidebar
+    // Search results are handled separately in the sidebar
+    let filtered = allLocations;
+
+    // Debug: Uncomment for filter debugging
+    // console.log('🔍 Filtering locations:', { totalLocations: allLocations.length, filters, sampleLocation: allLocations[0] });
+
+    // Apply filters (but not search)
+    if (filters.serviceType && filters.serviceType !== "all") {
+      filtered = filtered.filter(loc => loc.serviceType === filters.serviceType);
+      // console.log(`🔍 After serviceType filter (${filters.serviceType}):`, filtered.length);
     }
 
-    let filtered = allLocations;
     if (filters.isOpenNow) {
-      filtered = filtered.filter((loc) => loc.isOpenNow);
+      filtered = filtered.filter(loc => loc.isOpenNow === true);
+      // console.log('🔍 After isOpenNow filter:', filtered.length);
     }
-    if (filters.serviceType && filters.serviceType !== "all") {
-      filtered = filtered.filter(
-        (loc) => loc.serviceType === filters.serviceType
-      );
+
+    // Apply price range filter
+    if (filters.priceRange && filters.priceRange.length > 0) {
+      filtered = filtered.filter(loc => {
+        if (!loc.priceLevel) return false;
+        // Convert price level to price range symbols
+        const priceSymbol = ['$', '$$', '$$$', '$$$$'][loc.priceLevel - 1];
+        return filters.priceRange!.includes(priceSymbol as any);
+      });
+      // console.log('🔍 After priceRange filter:', filtered.length);
     }
-    if (
-      filters.priceRange &&
-      Array.isArray(filters.priceRange) &&
-      filters.priceRange.length > 0
-    ) {
-      // TODO: Implement price filtering with new pricing system
-      // filtered = filtered.filter((loc) =>
-      //   filters.priceRange!.includes(loc.priceRange)
-      // );
-    }
-    setFilteredLocations(filtered);
-  }, [filters, allLocations]);
+
+    // console.log('🔍 Final filtered locations:', filtered.length);
+    return filtered;
+  }, [allLocations, filters]);
 
   const handleLocationSubmit = async (locations: LocationResult[]) => {
     try {
@@ -164,17 +212,23 @@ export default function Home() {
 
       await Promise.all(submissionPromises);
 
-      // Refresh locations
+      // Refresh locations using merge approach
       const locationsFromDb = await firebaseOperations.getAllLocations({});
       const approvedLocations = locationsFromDb.filter(
         (loc) => loc.status === "approved"
       );
-      setAllLocations(approvedLocations);
-      setFilteredLocations(approvedLocations);
+
+      // Merge new locations instead of replacing
+      setAllLocations(prevLocations => {
+        const existingIds = new Set(prevLocations.map(loc => loc.id));
+        const newLocations = approvedLocations.filter(loc => !existingIds.has(loc.id));
+        return [...prevLocations, ...newLocations];
+      });
+
       setShowIntakeDialog(false);
-      
+
       success(
-        `${locations.length} location${locations.length > 1 ? 's' : ''} submitted for moderation!`, 
+        `${locations.length} location${locations.length > 1 ? 's' : ''} submitted for moderation!`,
         "Submission Successful"
       );
     } catch (err) {
@@ -189,11 +243,16 @@ export default function Home() {
   ) => {
     try {
       await firebaseOperations.updateLocationStatus(locationId, "approved");
-      const locationsFromDb = await firebaseOperations.getAllLocations({});
-      const approvedLocations = locationsFromDb.filter(
-        (loc) => loc.status === "approved"
+
+      // Update local state instead of full reload
+      setAllLocations(prevLocations =>
+        prevLocations.map(loc =>
+          loc.id === locationId
+            ? { ...loc, status: "approved" as const }
+            : loc
+        )
       );
-      setAllLocations(approvedLocations);
+
       success("Location approved successfully!", "Approval Complete");
     } catch (err) {
       console.error("Error approving location:", err);
@@ -203,52 +262,44 @@ export default function Home() {
 
   const handleRejectLocation = async (
     locationId: string,
-    reason: string,
+    reason?: string,
     notes?: string
   ) => {
     try {
       await firebaseOperations.updateLocationStatus(locationId, "rejected");
-      info("Location rejected", "Rejection Complete");
+
+      // Update local state instead of full reload
+      setAllLocations(prevLocations =>
+        prevLocations.map(loc =>
+          loc.id === locationId
+            ? { ...loc, status: "rejected" as const }
+            : loc
+        )
+      );
+
+      info(`Location rejected${reason ? `: ${reason}` : ''}`, "Rejection Complete");
     } catch (err) {
       console.error("Error rejecting location:", err);
       error("Error rejecting location", "Rejection Failed");
     }
   };
 
-  const handleBulkAction = (
-    locationIds: string[],
-    action: "approve" | "reject"
-  ) => {
-    if (action === "approve") {
-      locationIds.forEach((id) => handleApproveLocation(id, "Bulk approved"));
-    } else {
-      locationIds.forEach((id) =>
-        handleRejectLocation(id, "Bulk rejected", "Bulk action")
-      );
-    }
-  };
-
-  // Show loading screen while auth is initializing or locations are loading
-  if (isAuthLoading || isLoadingLocations) {
+  // Show loading screen only for auth, not for locations
+  if (isAuthLoading) {
     return (
       <LoadingScreen
         message="Amala Map"
-        submessage={
-          isAuthLoading 
-            ? "Initializing your native taste buds..." 
-            : "Loading delicious Amala locations worldwide..."
-        }
+        submessage="Initializing your native taste buds..."
         showLogo={true}
       />
     );
   }
   return (
     <div className="h-screen w-full bg-gray-100 overflow-hidden flex animate-in fade-in duration-500">
-      {/* Sidebar with Sliding Animation - absolutely positioned */}
+      {/* Sidebar with Sliding Animation - tablet and desktop (sm:block hidden = ≥640px) */}
       <div
-        className={`fixed top-0 left-0 h-full w-[408px] bg-white shadow-lg z-30 transition-transform duration-300 ease-in-out xl:block hidden ${
-          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed top-0 left-0 h-full w-full max-w-[280px] md:max-w-[320px] lg:max-w-[360px] xl:max-w-[400px] bg-white shadow-lg z-30 transition-transform duration-300 ease-in-out sm:block hidden ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
       >
         {/* Triangle Toggle Button - Always visible on the right edge */}
         <button
@@ -256,11 +307,10 @@ export default function Home() {
           className="absolute -right-6 top-1/2 transform -translate-y-1/2 bg-white shadow-lg rounded-r-lg p-2 z-40 hover:bg-gray-50 transition-colors border border-l-0 border-gray-200"
         >
           <div
-            className={`w-0 h-0 transition-transform duration-200 ${
-              isSidebarOpen
-                ? "border-r-[8px] border-r-gray-600 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent"
-                : "border-l-[8px] border-l-gray-600 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent"
-            }`}
+            className={`w-0 h-0 transition-transform duration-200 ${isSidebarOpen
+              ? "border-r-[8px] border-r-gray-600 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent"
+              : "border-l-[8px] border-l-gray-600 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent"
+              }`}
           />
         </button>
 
@@ -284,10 +334,14 @@ export default function Home() {
           <div className="bg-white px-4 py-3 border-b border-gray-100">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-lg font-medium text-gray-900">Results</h1>
+                <h1 className="text-lg font-medium text-gray-900">
+                  {searchResults.length > 0 ? 'Search Results' : 'Results'}
+                </h1>
                 <p className="text-sm text-gray-600">
-                  {filteredLocations.length}{" "}
-                  {filteredLocations.length === 1 ? "result" : "results"}
+                  {searchResults.length > 0
+                    ? `${searchResults.length} ${searchResults.length === 1 ? 'result' : 'results'}`
+                    : `${filteredLocations.length} ${filteredLocations.length === 1 ? 'result' : 'results'}`
+                  }
                 </p>
               </div>
             </div>
@@ -295,134 +349,131 @@ export default function Home() {
 
           {/* Scrollable Content Area - Location List View */}
           <div className="flex-1 overflow-y-auto">
-            <div className="divide-y divide-gray-100">
-              {filteredLocations.map((location, idx) => (
-                <div
-                  key={location.id ?? `location-${idx}`}
-                  className="p-4 cursor-pointer transition-all duration-200 hover:bg-gray-50"
-                  onClick={() => setSelectedLocation(location)}
-                >
-                  <div className="flex gap-3">
-                    <div className="flex-1 min-w-0 space-y-1">
-                      <h3 className="font-medium text-gray-900 text-base leading-tight">
-                        {location.name}
-                      </h3>
+            {isLoadingLocations ? (
+              <LocationSkeleton count={8} />
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {(searchResults.length > 0 ? searchResults : filteredLocations).map((location, idx) => (
+                  <div
+                    key={location.id ?? `location-${idx}`}
+                    className="p-4 cursor-pointer transition-all duration-200 hover:bg-gray-50"
+                    onClick={() => setSelectedLocation(location)}
+                  >
+                    <div className="flex gap-3">
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <h3 className="font-medium text-gray-900 text-base leading-tight">
+                          {location.name}
+                        </h3>
 
-                      <div className="flex items-center gap-2 text-sm">
-                        <div className="flex items-center gap-1">
-                          <span className="font-medium text-gray-900">
-                            {location.rating?.toFixed(1) || "4.0"}
-                          </span>
-                          <div className="flex items-center gap-0.5">
-                            {[...Array(5)].map((_, i) => (
-                              <Star
-                                key={i}
-                                className={`w-3 h-3 ${
-                                  i < Math.floor(location.rating || 4)
+                        <div className="flex items-center gap-2 text-sm">
+                          <div className="flex items-center gap-1">
+                            <span className="font-medium text-gray-900">
+                              {location.rating?.toFixed(1) || "4.0"}
+                            </span>
+                            <div className="flex items-center gap-0.5">
+                              {[...Array(5)].map((_, i) => (
+                                <StarIcon
+                                  key={i}
+                                  className={`w-3 h-3 ${i < Math.floor(location.rating || 4)
                                     ? "text-yellow-400"
                                     : i < (location.rating || 4)
-                                    ? "text-yellow-300"
-                                    : "text-gray-300"
-                                }`}
-                              />
-                            ))}
+                                      ? "text-yellow-300"
+                                      : "text-gray-300"
+                                    }`}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-gray-500">
+                              ({location.reviewCount || "128"})
+                            </span>
                           </div>
-                          <span className="text-gray-500">
-                            ({location.reviewCount || "128"})
+                          <span className="text-gray-400">·</span>
+                          <span className="text-gray-600">
+                            {location.priceInfo || "Pricing available"}
                           </span>
                         </div>
-                        <span className="text-gray-400">·</span>
-                        <span className="text-gray-600">
-                          {location.priceInfo || "Pricing available"}
-                        </span>
-                      </div>
 
-                      <div className="flex items-center gap-1 text-sm text-gray-600">
-                        <span>Restaurant</span>
-                        <span className="text-gray-400">·</span>
-                        <span className="truncate">{location.address}</span>
-                      </div>
+                        <div className="flex items-center gap-1 text-sm text-gray-600">
+                          <span>Restaurant</span>
+                          <span className="text-gray-400">·</span>
+                          <span className="truncate">{location.address}</span>
+                        </div>
 
-                      <div className="text-sm text-gray-600 leading-tight">
-                        {location.description ||
-                          "Authentic Nigerian cuisine & West African specialties"}
-                      </div>
+                        <div className="text-sm text-gray-600 leading-tight">
+                          {location.description ||
+                            "Authentic Nigerian cuisine & West African specialties"}
+                        </div>
 
-                      <div className="flex items-center gap-1 text-sm">
-                        <span
-                          className={`font-medium ${
-                            location.isOpenNow
+                        <div className="flex items-center gap-1 text-sm">
+                          <span
+                            className={`font-medium ${location.isOpenNow
                               ? "text-green-700"
                               : "text-red-700"
-                          }`}
-                        >
-                          {location.isOpenNow ? "Open" : "Closed"}
-                        </span>
-                        {!location.isOpenNow && (
-                          <>
-                            <span className="text-gray-400">⋅</span>
-                            <span className="text-gray-600">Opens 10 am</span>
-                          </>
+                              }`}
+                          >
+                            {location.isOpenNow ? "Open" : "Closed"}
+                          </span>
+                          {!location.isOpenNow && (
+                            <>
+                              <span className="text-gray-400">⋅</span>
+                              <span className="text-gray-600">Opens 10 am</span>
+                            </>
+                          )}
+                        </div>
+
+                        {location.reviews && location.reviews.length > 0 && (
+                          <div className="flex items-start gap-2 text-sm pt-2 border-t border-gray-100">
+                            <div className="w-4 h-4 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex-shrink-0 mt-0.5"></div>
+                            <div className="text-gray-600 italic leading-tight">
+                              &quot;{location.reviews[0].text}&quot;
+                            </div>
+                          </div>
                         )}
                       </div>
 
-                      {location.reviews && location.reviews.length > 0 && (
-                        <div className="flex items-start gap-2 text-sm pt-2 border-t border-gray-100">
-                          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex-shrink-0 mt-0.5"></div>
-                          <div className="text-gray-600 italic leading-tight">
-                            &quot;{location.reviews[0].text}&quot;
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-gray-100">
-                      <Image
-                        src={
-                          location.images && location.images.length > 0
-                            ? location.images[0]
-                            : "/placeholder-image.svg"
-                        }
-                        alt={location.name}
-                        width={80}
-                        height={80}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          console.log("Location image failed to load:", e.currentTarget.src);
-                          e.currentTarget.src = "/placeholder-image.svg";
-                        }}
-                        unoptimized
-                      />
+                      <div className="flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden bg-gray-100">
+                        <OptimizedImage
+                          src={
+                            location.images && location.images.length > 0
+                              ? location.images[0]
+                              : "/placeholder-image.svg"
+                          }
+                          alt={location.name}
+                          width={80}
+                          height={80}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
 
-              {filteredLocations.length === 0 && (
-                <div className="text-center py-12 px-4">
-                  <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-600 font-medium">
-                    No locations found
-                  </p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Try adjusting your filters
-                  </p>
-                </div>
-              )}
-            </div>
+                {searchResults.length === 0 && filteredLocations.length === 0 && !isLoadingLocations && (
+                  <div className="text-center py-12 px-4">
+                    <MapPinIcon className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    <p className="text-gray-600 font-medium">
+                      No locations found
+                    </p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Try adjusting your filters
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Info Panel - Floating card beside sidebar, adjusts position based on sidebar state */}
+      {/* Info Panel - Location detail card, responsive positioning */}
       <div
-        className={`absolute top-24 bottom-4 w-96 z-20 transform transition-all duration-300 ease-out ${
-          isSidebarOpen ? "left-[420px]" : "left-8"
-        } ${
-          selectedLocation
+        className={`hidden sm:block fixed top-4 bottom-4 w-72 md:w-80 lg:w-96 z-30 transform transition-all duration-300 ease-out ${isSidebarOpen
+          ? "sm:left-[292px] md:left-[332px] lg:left-[372px] xl:left-[412px]"
+          : "left-4"
+          } ${selectedLocation
             ? "translate-x-0 opacity-100"
             : "-translate-x-8 opacity-0 pointer-events-none"
-        }`}
+          }`}
       >
         <div className="h-full p-4">
           <div className="h-full bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden transform transition-all duration-200 hover:shadow-3xl">
@@ -431,27 +482,18 @@ export default function Home() {
                 location={selectedLocation}
                 variant="full"
                 onClose={() => setSelectedLocation(null)}
-                onDirections={() => {}}
-                onShare={() => {}}
-                onSave={() => {}}
+                onDirections={() => { }}
+                onShare={() => { }}
+                onSave={() => { }}
               />
             )}
           </div>
         </div>
       </div>
 
-      {/* Main Map Container */}
-      <div className="flex-1 h-full relative">
-        <MapContainer
-          locations={filteredLocations}
-          selectedLocation={selectedLocation}
-          onLocationSelect={(loc) => setSelectedLocation(loc)}
-          filters={filters}
-        />
-      </div>
 
-      {/* Mobile Layout */}
-      <div className="xl:hidden relative z-10">
+      {/* Mobile Layout - floaty header */}
+      <div className="sm:hidden fixed top-4 left-4 right-4 z-40">
         <Header
           onAddLocation={() => setShowIntakeDialog(true)}
           onSearch={handleSearch}
@@ -465,10 +507,33 @@ export default function Home() {
         />
       </div>
 
+      {/* Mobile Map Container - full screen */}
+      <div className="sm:hidden fixed inset-0 z-10">
+        <MapContainer
+          locations={searchResults.length > 0 ? searchResults : filteredLocations}
+          selectedLocation={selectedLocation}
+          onLocationSelect={(loc) => setSelectedLocation(loc)}
+          filters={filters}
+        />
+      </div>
+
+      {/* Desktop/Tablet Map Container - positioned beside sidebar */}
+      <div className={`hidden sm:block fixed inset-0 z-10 transition-all duration-300 ease-in-out ${isSidebarOpen ? 'sm:left-[280px] md:left-[320px] lg:left-[360px] xl:left-[400px]' : 'left-0'}`}>
+        <MapContainer
+          locations={searchResults.length > 0 ? searchResults : filteredLocations}
+          selectedLocation={selectedLocation}
+          onLocationSelect={(loc) => setSelectedLocation(loc)}
+          filters={filters}
+        />
+      </div>
+
       {/* floating filters - positioned at top center */}
       <CentralFilters
         filters={filters}
         onFilterChange={(newFilters) => {
+          // Clear search results when filters change
+          setSearchResults([]);
+          
           if (Object.keys(newFilters).length === 0) {
             setFilters({});
           } else {
@@ -483,6 +548,17 @@ export default function Home() {
         onClose={() => setShowIntakeDialog(false)}
         onSubmit={handleLocationSubmit}
       />
+
+      {/* Mobile Bottom Sheet - mobile phones only (smaller than tablets) */}
+      <div className="sm:hidden">
+        <MobileBottomSheet
+          locations={searchResults.length > 0 ? searchResults : filteredLocations}
+          selectedLocation={selectedLocation}
+          onLocationSelect={(loc) => setSelectedLocation(loc)}
+          onClose={() => setSelectedLocation(null)}
+        />
+      </div>
+
 
       {/* User Profile */}
       <MapUserProfile />
