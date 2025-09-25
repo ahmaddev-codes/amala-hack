@@ -1,75 +1,120 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow all reads/writes for server-side Admin SDK
-    // The Admin SDK bypasses security rules, but we'll still have some basic rules
-    
+    // Helper function to get user roles from database
+    function getUserRoles() {
+      return request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.token.email)) ?
+        get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.roles : ['user'];
+    }
+
+    // Helper function to check if user has specific role
+    function hasRole(role) {
+      return request.auth != null &&
+        role in getUserRoles();
+    }
+
+    // Helper function to check if user owns the resource
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
     // Locations collection - Public read, auth required for write
     match /locations/{locationId} {
-      allow read: if true;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && 
-        (request.auth.token.admin == true || 
-         request.auth.token.moderator == true ||
-         request.auth.token.uid == resource.data.submittedBy);
+      allow read: if true; // Public read access for all locations
+      allow create: if request.auth != null; // Any authenticated user can create
+      allow update: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('moderator') ||
+        isOwner(resource.data.submittedBy)
+      );
+      allow delete: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('moderator')
+      );
     }
-    
-    // Reviews collection - Only approved reviews are publicly readable
+
+    // Reviews collection - Public read for approved reviews
     match /reviews/{reviewId} {
-      allow read: if resource.data.status == 'approved' || 
-        (request.auth != null && 
-         (request.auth.token.admin == true || 
-          request.auth.token.moderator == true));
-      
-      // Allow users to create their own reviews
-      allow create: if request.auth != null && 
-        request.resource.data.userId == request.auth.uid;
-        
-      // Only allow updates to status for moderation
-      allow update: if request.auth != null && 
-        (request.auth.token.admin == true || 
-         request.auth.token.moderator == true) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']);
+      allow read: if resource.data.status == 'approved' ||
+        (request.auth != null && (
+          hasRole('admin') ||
+          hasRole('moderator') ||
+          isOwner(resource.data.user_id)
+        ));
+
+      allow create: if request.auth != null &&
+        request.resource.data.user_id == request.auth.uid;
+
+      allow update: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('moderator') ||
+        isOwner(resource.data.user_id)
+      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'moderatedBy', 'moderatedAt']);
+
+      allow delete: if request.auth != null && (
+        hasRole('admin') ||
+        isOwner(resource.data.user_id)
+      );
     }
-    
-    // Analytics events - Auth required
+
+    // Analytics events - Public write for tracking, admin/mod read
     match /analytics_events/{eventId} {
-      allow read, write: if request.auth != null && 
-        (request.auth.token.admin == true || 
-         request.auth.token.moderator == true);
+      allow read: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('moderator')
+      );
+      allow write: if true; // Allow public analytics tracking
     }
-    
-    // Restaurant photos - Only approved photos are publicly readable
+
+    // Restaurant photos - Public read for approved photos
     match /restaurant_photos/{photoId} {
-      allow read: if resource.data.status == 'approved' || 
-        (request.auth != null && 
-         (request.auth.token.admin == true || 
-          request.auth.token.moderator == true));
-      
-      allow create: if request.auth != null;
-      
-      // Only allow updates to status for moderation
-      allow update: if request.auth != null && 
-        (request.auth.token.admin == true || 
-         request.auth.token.moderator == true) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt']);
+      allow read: if resource.data.status == 'approved' ||
+        (request.auth != null && (
+          hasRole('admin') ||
+          hasRole('moderator') ||
+          isOwner(resource.data.user_id)
+        ));
+
+      allow create: if request.auth != null &&
+        request.resource.data.user_id == request.auth.uid;
+
+      allow update: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('moderator') ||
+        isOwner(resource.data.user_id)
+      ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'moderatedBy', 'moderatedAt']);
+
+      allow delete: if request.auth != null && (
+        hasRole('admin') ||
+        isOwner(resource.data.user_id)
+      );
     }
-    
+
+    // Users collection for role management - Only admins can manage
+    match /users/{userEmail} {
+      allow read: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('moderator') ||
+        request.auth.token.email == userEmail
+      );
+      allow write: if request.auth != null && hasRole('admin');
+    }
+
     // Moderation logs - Only admins and moderators can read/write
     match /moderation_logs/{logId} {
-      allow read, write: if request.auth != null && 
-        (request.auth.token.admin == true || 
-         request.auth.token.moderator == true);
+      allow read, write: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('moderator')
+      );
     }
-    
-    // User roles - Only admins can manage
-    match /user_roles/{userId} {
-      allow read: if request.auth != null && 
-        (request.auth.token.admin == true || 
-         request.auth.token.moderator == true ||
-         request.auth.uid == userId);
-      allow write: if request.auth != null && 
-        request.auth.token.admin == true;
+
+    // Flagged content - Only admins and moderators can manage
+    match /flagged_content/{flagId} {
+      allow read, write: if request.auth != null && (
+        hasRole('admin') ||
+        hasRole('moderator')
+      );
     }
+
   }
 }

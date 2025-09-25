@@ -252,54 +252,61 @@ export function GoogleMapsInfoPanel({
           </button>
         </div>
 
-        <div className="flex items-center gap-6">
-          <div className="text-center">
-            <div className="text-4xl font-light text-gray-900">
-              {location.rating?.toFixed(1) || "4.3"}
+        {/* Only show rating section if we have real rating data */}
+        {location.rating ? (
+          <div className="flex items-center gap-6">
+            <div className="text-center">
+              <div className="text-4xl font-light text-gray-900">
+                {location.rating.toFixed(1)}
+              </div>
+              <div className="flex items-center justify-center gap-1 my-2">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    className={`w-5 h-5 ${
+                      i < Math.floor(location.rating!)
+                        ? "text-yellow-400"
+                        : "text-gray-300"
+                    }`}
+                  />
+                ))}
+              </div>
+              <div className="text-sm text-gray-600">
+                {location.reviewCount || "0"} reviews
+              </div>
             </div>
-            <div className="flex items-center justify-center gap-1 my-2">
-              {[...Array(5)].map((_, i) => (
-                <Star
-                  key={i}
-                  className={`w-5 h-5 ${
-                    i < Math.floor(location.rating || 4.3)
-                      ? "text-yellow-400"
-                      : "text-gray-300"
-                  }`}
-                />
+
+            <div className="flex-1">
+              {[5, 4, 3, 2, 1].map((stars) => (
+                <div key={stars} className="flex items-center gap-3 mb-1">
+                  <span className="text-sm w-2">{stars}</span>
+                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gray-400 rounded-full"
+                      style={{
+                        width: `${
+                          stars === 5
+                            ? 60
+                            : stars === 4
+                            ? 30
+                            : stars === 3
+                            ? 20
+                            : stars === 2
+                            ? 5
+                            : 8
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
               ))}
             </div>
-            <div className="text-sm text-gray-600">
-              {location.reviewCount || "0"} reviews
-            </div>
           </div>
-
-          <div className="flex-1">
-            {[5, 4, 3, 2, 1].map((stars) => (
-              <div key={stars} className="flex items-center gap-3 mb-1">
-                <span className="text-sm w-2">{stars}</span>
-                <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gray-400 rounded-full"
-                    style={{
-                      width: `${
-                        stars === 5
-                          ? 60
-                          : stars === 4
-                          ? 30
-                          : stars === 3
-                          ? 20
-                          : stars === 2
-                          ? 5
-                          : 8
-                      }%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
+        ) : (
+          <div className="text-center py-4">
+            <div className="text-gray-500 text-sm">No ratings available yet</div>
           </div>
-        </div>
+        )}
 
         <button className="mt-4 flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
           <EditIcon className="w-4 h-4" />
@@ -533,32 +540,35 @@ export function GoogleMapsInfoPanel({
           {location.name}
         </h1>
 
-        <div className="flex items-center gap-2 mb-2">
-          <div className="flex items-center">
-            <span className="font-medium text-gray-900">
-              {location.rating?.toFixed(1) || "4.3"}
-            </span>
-            <div className="flex items-center ml-1">
-              {[...Array(5)].map((_, i) => (
-                <Star
-                  key={i}
-                  className={`w-4 h-4 ${
-                    i < Math.floor(location.rating || 4.3)
-                      ? "text-yellow-400"
-                      : "text-gray-300"
-                  }`}
-                />
-              ))}
+        {/* Only show rating if we have real data */}
+        {location.rating && (
+          <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center">
+              <span className="font-medium text-gray-900">
+                {location.rating.toFixed(1)}
+              </span>
+              <div className="flex items-center ml-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    className={`w-4 h-4 ${
+                      i < Math.floor(location.rating!)
+                        ? "text-yellow-400"
+                        : "text-gray-300"
+                    }`}
+                  />
+                ))}
+              </div>
+              <span className="ml-2 text-gray-600">
+                ({location.reviewCount || "0"})
+              </span>
             </div>
-            <span className="ml-2 text-gray-600">
-              ({location.reviewCount || "0"})
+            <span className="text-gray-400">·</span>
+            <span className="text-gray-600">
+              {location.priceInfo || "Contact for pricing"}
             </span>
           </div>
-          <span className="text-gray-400">·</span>
-          <span className="text-gray-600">
-            {location.priceInfo || "Contact for pricing"}
-          </span>
-        </div>
+        )}
 
         <div className="flex items-center gap-1 text-sm text-gray-600">
           <RestaurantIcon className="w-4 h-4" />

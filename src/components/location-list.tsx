@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import { MapPinIcon as MapPin } from "@heroicons/react/24/outline";
 import { IoStar, IoStarHalf, IoStarOutline } from "react-icons/io5";
-import { AmalaLocation } from "@/types/location";
+import { AmalaLocation, Review } from "@/types/location";
 
 interface LocationReview {
   id: string;
@@ -14,6 +13,7 @@ interface LocationReview {
   author_photo?: string;
   publish_time_description?: string;
   source?: string;
+  date_posted?: string; // Add missing field
 }
 
 interface LocationListProps {
@@ -36,15 +36,21 @@ export function LocationList({
     const fetchReviews = async () => {
       for (const location of locations) {
         try {
-          const response = await fetch(`/api/locations/${location.id}/reviews`);
+          console.log(`Fetching reviews for ${location.name} (ID: ${location.id})`);
+          const response = await fetch(`/api/reviews?location_id=${location.id}`);
+          console.log(`Response status for ${location.name}:`, response.status);
+          
           if (response.ok) {
             const data = await response.json();
+            console.log(`Reviews data for ${location.name}:`, data);
             if (data.success) {
               setLocationReviews((prev) => ({
                 ...prev,
                 [location.id]: data.reviews || [],
               }));
             }
+          } else {
+            console.error(`API error for ${location.name}:`, response.status, response.statusText);
           }
         } catch (error) {
           console.error(`Failed to fetch reviews for ${location.name}:`, error);
@@ -57,10 +63,30 @@ export function LocationList({
     }
   }, [locations]);
 
-  const getRandomReview = (locationId: string): LocationReview | null => {
+  const getLatestReview = (locationId: string): LocationReview | null => {
     const reviews = locationReviews[locationId] || [];
     if (reviews.length === 0) return null;
-    return reviews[Math.floor(Math.random() * reviews.length)];
+    // Return the most recent review instead of random
+    return reviews.sort((a, b) => {
+      const dateA = a.date_posted ? new Date(a.date_posted).getTime() : 0;
+      const dateB = b.date_posted ? new Date(b.date_posted).getTime() : 0;
+      return dateB - dateA;
+    })[0];
+  };
+
+  const getCurrentHours = (location: AmalaLocation): string | null => {
+    if (!location.hours) return null;
+    
+    const today = new Date();
+    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const currentDay = dayNames[today.getDay()];
+    
+    const todayHours = location.hours[currentDay];
+    if (!todayHours) return null;
+    
+    if (!todayHours.isOpen) return "Closed today";
+    
+    return `${todayHours.open} - ${todayHours.close}`;
   };
 
   return (
@@ -75,53 +101,59 @@ export function LocationList({
             <div className="flex">
               {/* Left side - Restaurant details */}
               <div className="flex-1 pr-3">
-                {/* Restaurant name - Google Maps fontHeadlineSmall */}
+                {/* Restaurant name */}
                 <div className="mb-1">
                   <h3 className="text-lg font-medium text-gray-900 leading-tight">
                     {loc.name}
                   </h3>
                 </div>
 
-                {/* Rating section - exact Google Maps structure */}
-                <div className="mb-1">
-                  <div className="flex items-center">
-                    <span className="text-sm font-medium text-gray-900 mr-1">
-                      {loc.rating?.toFixed(1) || "4.3"}
-                    </span>
-
-                    {/* 5 stars - Google Maps style */}
-                    <div className="flex items-center mr-1">
-                      {[...Array(5)].map((_, i) => {
-                        const rating = loc.rating || 4.3;
-                        const filled = i < Math.floor(rating);
-                        const halfFilled =
-                          i === Math.floor(rating) && rating % 1 >= 0.5;
-
-                        return (
-                          <span
-                            key={i}
-                            className="text-yellow-500"
-                            style={{ fontSize: "12px" }}
-                          >
-                            {filled ? (
-                              <IoStar />
-                            ) : halfFilled ? (
-                              <IoStarHalf />
-                            ) : (
-                              <IoStarOutline className="text-gray-300" />
-                            )}
-                          </span>
-                        );
-                      })}
-                      <span className="text-sm text-gray-600 ml-1">
-                        (
-                        {loc.reviewCount ||
-                          Math.floor(Math.random() * 200) + 11}
-                        )
+                {/* Rating section - only show if real rating exists */}
+                {loc.rating && (
+                  <div className="mb-1">
+                    <div className="flex items-center">
+                      <span className="text-sm font-medium text-gray-900 mr-1">
+                        {loc.rating.toFixed(1)}
                       </span>
+
+                      {/* 5 stars */}
+                      <div className="flex items-center mr-1">
+                        {[...Array(5)].map((_, i) => {
+                          const rating = loc.rating!;
+                          const filled = i < Math.floor(rating);
+                          const halfFilled =
+                            i === Math.floor(rating) && rating % 1 >= 0.5;
+
+                          return (
+                            <span
+                              key={i}
+                              className="text-yellow-500"
+                              style={{ fontSize: "12px" }}
+                            >
+                              {filled ? (
+                                <IoStar />
+                              ) : halfFilled ? (
+                                <IoStarHalf />
+                              ) : (
+                                <IoStarOutline className="text-gray-300" />
+                              )}
+                            </span>
+                          );
+                        })}
+                        <span className="text-sm text-gray-600 ml-1">
+                          (
+                          {(() => {
+                            const fetchedCount = locationReviews[loc.id]?.length || 0;
+                            const originalCount = loc.reviewCount;
+                            console.log(`Location ${loc.name}: originalCount=${originalCount}, fetchedCount=${fetchedCount}`);
+                            return fetchedCount;
+                          })()}
+                          )
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Restaurant type and address */}
                 <div className="mb-1">
@@ -132,7 +164,7 @@ export function LocationList({
                   </div>
                 </div>
 
-                {/* Open/closed status - Google Maps styling */}
+                {/* Open/closed status */}
                 <div className="mb-2">
                   <span>
                     <span
@@ -142,16 +174,20 @@ export function LocationList({
                     >
                       {loc.isOpenNow ? "Open" : "Closed"}
                     </span>
-                    <span className="font-normal text-gray-600">
-                      {loc.isOpenNow
-                        ? " ⋅ Closes 11 pm ⋅ Reopens 7 am"
-                        : " ⋅ Opens 7 am"}
-                    </span>
+                    {/* Only show hours if we have real data */}
+                    {(() => {
+                      const currentHours = getCurrentHours(loc);
+                      return currentHours && (
+                        <span className="font-normal text-gray-600">
+                          {" ⋅ " + currentHours}
+                        </span>
+                      );
+                    })()}
                   </span>
                 </div>
               </div>
 
-              {/* Right side - 84x84px image like Google Maps */}
+              {/* Right side */}
               <div
                 className="flex-shrink-0"
                 style={{ width: "84px", height: "84px" }}
@@ -186,7 +222,7 @@ export function LocationList({
           <div className="px-4 pb-4">
             <div className="flex items-start">
               {(() => {
-                const review = getRandomReview(loc.id);
+                const review = getLatestReview(loc.id);
                 if (!review) {
                   return (
                     <div className="text-sm text-gray-500 italic">

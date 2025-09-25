@@ -5,6 +5,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import Image from 'next/image';
 
 interface LazyImageProps {
   src: string;
@@ -79,7 +80,7 @@ export function LazyImage({
 
       {/* Actual image */}
       {isInView && (
-        <img
+        <Image
           src={hasError ? fallback : src}
           alt={alt}
           className={cn(

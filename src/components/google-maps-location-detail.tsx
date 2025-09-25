@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
-import { AmalaLocation } from "@/types/location";
+import React, { useState, useEffect } from "react";
+import { AmalaLocation, Review } from "@/types/location";
 import {
   StarIcon as Star,
   PhoneIcon as Phone,
@@ -27,12 +27,12 @@ import {
 } from "@heroicons/react/24/outline";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import Image from "next/image";
 import { useAuth } from "@/contexts/FirebaseAuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { ReviewSubmission } from "./review-submission";
 import { trackEvent } from "@/lib/utils";
+import { TabContentLoader } from "@/components/ui/loading-spinner";
 
 interface GoogleMapsLocationDetailProps {
   location: AmalaLocation;
@@ -64,6 +64,51 @@ export function GoogleMapsLocationDetail({
   const [reviewSort, setReviewSort] = useState("newest");
   const [reviewFilter, setReviewFilter] = useState("all");
   const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [locationPhotos, setLocationPhotos] = useState<any[]>([]);
+  const [photosLoading, setPhotosLoading] = useState(false);
+
+  // Fetch reviews for this location
+  const fetchReviews = async () => {
+    if (!location.id) return;
+    
+    setReviewsLoading(true);
+    try {
+      const response = await fetch(`/api/reviews?location_id=${location.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setReviews(data.reviews || []);
+      }
+    } catch (error) {
+      console.error('Error fetching reviews:', error);
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
+  // Fetch photos for this location
+  const fetchPhotos = async () => {
+    if (!location.id) return;
+    
+    setPhotosLoading(true);
+    try {
+      const response = await fetch(`/api/photos?location_id=${location.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setLocationPhotos(data.photos || []);
+      }
+    } catch (error) {
+      console.error('Error fetching photos:', error);
+    } finally {
+      setPhotosLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReviews();
+    fetchPhotos();
+  }, [location.id]);
 
   // Enhanced action handlers from LocationInfoWindow
   const shareLocationWithDirections = (location: AmalaLocation) => {
@@ -146,11 +191,18 @@ export function GoogleMapsLocationDetail({
       : { priceLevel: "$$" };
 
   const images = location.images || [];
-  const reviews = location.reviews || [];
+  const locationReviews = location.reviews || [];
 
-  const handleReviewSubmit = () => {
-    success("Review submitted successfully!", "Thank you for your feedback");
-    // In a real app, this would refresh the reviews list
+  const handleReviewSubmit = async () => {
+    try {
+      success("Review submitted successfully!", "Thank you for your feedback");
+      // Refresh the reviews list to show the new review
+      await fetchReviews();
+    } catch (error) {
+      console.error("Error refreshing reviews after submission:", error);
+      // Still show success message since the review was submitted
+      // The error is just in refreshing the list
+    }
   };
 
   const TabButton = ({
@@ -279,31 +331,36 @@ export function GoogleMapsLocationDetail({
     </div>
   );
 
-  const renderReviews = () => (
-    <div className="space-y-4">
-      {/* Add Review Button */}
-      <div className="flex items-center justify-between">
-        <h3 className="font-medium text-gray-900">
-          Reviews ({reviews.length})
-        </h3>
-        <Button
-          onClick={() => {
-            if (!user) {
-              error(
-                "Please sign in to write a review",
-                "Authentication Required"
-              );
-              return;
-            }
-            setShowReviewForm(true);
-          }}
-          size="sm"
-          className="flex items-center gap-2"
-        >
-          <Add className="w-4 h-4" />
-          Write a review
-        </Button>
-      </div>
+  const renderReviews = () => {
+    if (reviewsLoading) {
+      return <TabContentLoader message="Loading reviews..." />;
+    }
+
+    return (
+      <div className="space-y-4">
+        {/* Add Review Button */}
+        <div className="flex items-center justify-between">
+          <h3 className="font-medium text-gray-900">
+            Reviews ({reviews.length})
+          </h3>
+          <Button
+            onClick={() => {
+              if (!user) {
+                error(
+                  "Please sign in to write a review",
+                  "Authentication Required"
+                );
+                return;
+              }
+              setShowReviewForm(true);
+            }}
+            size="sm"
+            className="flex items-center gap-2"
+          >
+            <Add className="w-4 h-4" />
+            Write a review
+          </Button>
+        </div>
 
       {/* Review Controls */}
       <div className="flex items-center gap-4 py-2 border-b">
@@ -339,8 +396,30 @@ export function GoogleMapsLocationDetail({
 
       {/* Reviews List */}
       <div className="space-y-4">
-        {reviews.length > 0 ? (
-          reviews.map((review, index) => (
+        {(() => {
+          // Filter reviews based on rating
+          let filteredReviews = reviewFilter === "all" 
+            ? reviews 
+            : reviews.filter(review => review.rating === parseInt(reviewFilter));
+          
+          // Sort reviews
+          filteredReviews = [...filteredReviews].sort((a, b) => {
+            switch (reviewSort) {
+              case "newest":
+                return new Date(b.date_posted).getTime() - new Date(a.date_posted).getTime();
+              case "oldest":
+                return new Date(a.date_posted).getTime() - new Date(b.date_posted).getTime();
+              case "highest":
+                return b.rating - a.rating;
+              case "lowest":
+                return a.rating - b.rating;
+              default:
+                return 0;
+            }
+          });
+          
+          return filteredReviews.length > 0 ? (
+            filteredReviews.map((review, index) => (
             <div
               key={index}
               className="border-b border-gray-100 pb-4 last:border-b-0"
@@ -373,7 +452,7 @@ export function GoogleMapsLocationDetail({
                       ))}
                     </div>
                     <span className="text-xs text-gray-500">
-                      {new Date(review.date_posted).toLocaleDateString()}
+                      {review.date_posted ? new Date(review.date_posted).toLocaleDateString() : 'Recently'}
                     </span>
                   </div>
                   <p className="text-sm text-gray-600 leading-relaxed">
@@ -392,58 +471,93 @@ export function GoogleMapsLocationDetail({
                 </div>
               </div>
             </div>
-          ))
-        ) : (
-          <div className="text-center py-8 text-gray-500">
-            <p>No reviews yet</p>
-            <p className="text-sm mt-1">Be the first to write a review!</p>
-          </div>
-        )}
+            ))
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>No reviews {reviewFilter !== "all" ? `with ${reviewFilter} stars` : ""}</p>
+              <p className="text-sm mt-1">
+                {reviewFilter !== "all" 
+                  ? `Try changing the filter to see more reviews` 
+                  : "Be the first to write a review!"
+                }
+              </p>
+            </div>
+          );
+        })()}
       </div>
     </div>
-  );
+    );
+  };
 
-  const renderPhotos = () => (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-medium text-gray-900">Photos ({images.length})</h3>
-        <Button 
-          size="sm" 
-          variant="outline" 
-          className="flex items-center gap-2"
-          onClick={() => {
-            if (!user) {
-              error("Please sign in to upload photos", "Authentication Required");
-              return;
-            }
-            info("Photo upload feature coming soon!", "Upload Photos");
-          }}
-        >
-          <Camera className="w-4 h-4" />
-          Add photos
-        </Button>
-      </div>
+  const renderPhotos = () => {
+    // Combine location images with uploaded photos
+    const allPhotos = [
+      ...images.map((url: string) => ({ url, source: 'location' })),
+      ...locationPhotos.map((photo: any) => ({ 
+        url: photo.cloudinary_url || photo.url, 
+        source: 'user',
+        user_name: photo.user_name,
+        description: photo.description
+      }))
+    ];
 
-      {images.length > 0 ? (
-        <div className="grid grid-cols-2 gap-2">
-          {images.map((image: string, index: number) => (
-            <div
-              key={index}
-              className="aspect-square relative rounded-lg overflow-hidden cursor-pointer hover:opacity-90"
-              onClick={() => setCurrentImageIndex(index)}
-            >
-              <Image
-                src={image}
-                alt={`Photo ${index + 1}`}
-                fill
-                className="object-cover"
-                unoptimized
-                onError={(e) => {
-                  console.log("Photo failed to load:", e.currentTarget.src);
-                  e.currentTarget.src = "/placeholder-image.svg";
-                }}
-              />
-            </div>
+    return (
+      <div className="space-y-4">
+        {photosLoading && (
+          <div className="text-center py-4">
+            <div className="text-sm text-gray-500">Loading photos...</div>
+          </div>
+        )}
+        
+        <div className="flex items-center justify-between">
+          <h3 className="font-medium text-gray-900">Photos ({allPhotos.length})</h3>
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="flex items-center gap-2"
+            onClick={() => {
+              if (!user) {
+                error("Please sign in to upload photos", "Authentication Required");
+                return;
+              }
+              info("Photo upload feature coming soon!", "Upload Photos");
+            }}
+          >
+            <Camera className="w-4 h-4" />
+            Add photos
+          </Button>
+        </div>
+
+        {allPhotos.length > 0 ? (
+          <div className="grid grid-cols-2 gap-2">
+            {allPhotos.map((photo: any, index: number) => (
+              <div
+                key={index}
+                className="aspect-square relative rounded-lg overflow-hidden cursor-pointer hover:opacity-90 group"
+                onClick={() => setCurrentImageIndex(index)}
+              >
+                <Image
+                  src={photo.url}
+                  alt={photo.description || `Photo ${index + 1}`}
+                  fill
+                  className="object-cover"
+                  unoptimized
+                  onError={(e) => {
+                    console.log("Photo failed to load:", e.currentTarget.src);
+                    e.currentTarget.src = "/placeholder-image.svg";
+                  }}
+                />
+                {photo.source === 'user' && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="text-white text-xs">
+                      <div className="font-medium">{photo.user_name}</div>
+                      {photo.description && (
+                        <div className="text-gray-200 truncate">{photo.description}</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
           ))}
         </div>
       ) : (
@@ -469,7 +583,8 @@ export function GoogleMapsLocationDetail({
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   const renderAbout = () => (
     <div className="space-y-4">
@@ -693,14 +808,16 @@ export function GoogleMapsLocationDetail({
 
       {/* Review Form Modal */}
       {showReviewForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 sm:p-6">
+          <div className="bg-white rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto mx-4 sm:mx-0">
             <ReviewSubmission
               location={location}
-              onSubmitted={() => {
+              onSubmitted={async () => {
                 setShowReviewForm(false);
+                // Refresh both reviews and photos after submission
+                await fetchReviews();
+                await fetchPhotos();
                 success("Review submitted successfully!", "Thank you for your feedback");
-                // TODO: Refresh reviews list
               }}
               onCancel={() => setShowReviewForm(false)}
             />
@@ -771,7 +888,7 @@ export function GoogleMapsLocationDetail({
                 ))}
               </div>
               <span className="text-sm text-gray-600">
-                {location.rating} ({location.reviewCount || reviews.length} reviews)
+                {location.rating} ({reviews.length} reviews)
               </span>
             </div>
           )}
@@ -894,11 +1011,14 @@ export function GoogleMapsLocationDetail({
 
       {/* Review Form Modal */}
       {showReviewForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 sm:p-6 z-50">
           <ReviewSubmission
             location={location}
-            onSubmitted={() => {
+            onSubmitted={async () => {
               setShowReviewForm(false);
+              // Refresh both reviews and photos after submission
+              await fetchReviews();
+              await fetchPhotos();
               success("Review submitted successfully!", "Thank you for your feedback");
             }}
             onCancel={() => setShowReviewForm(false)}

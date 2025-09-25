@@ -4,9 +4,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/FirebaseAuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { BrandLogo } from "@/components/ui/brand-logo";
+import { NetworkStatus } from "@/components/ui/network-status";
+import { FirebaseAnalyticsService as analytics } from '@/lib/analytics/firebase-analytics';
+import { NetworkChecker } from '@/lib/utils/network-checker';
+import { OfflineAuthService } from '@/lib/auth/offline-auth';
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -22,7 +27,7 @@ import {
   EyeSlashIcon,
   UserIcon
 } from "@heroicons/react/24/outline";
-import { BrandLogo } from "@/components/ui/brand-logo";
+import { useAnalytics } from "@/hooks/useAnalytics";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -31,10 +36,15 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [authRecommendations, setAuthRecommendations] = useState<{
+    preferredMethod: 'email' | 'google' | 'both';
+    message: string;
+    showGoogleButton: boolean;
+  } | null>(null);
   const router = useRouter();
   const { signIn, signUp, signInWithGoogle, user, isLoading: authLoading } = useAuth();
   const { success, error: showErrorToast, warning, info } = useToast();
+  const analytics = useAnalytics();
 
   // Auto-redirect to map if authenticated
   useEffect(() => {
@@ -51,35 +61,106 @@ export default function LoginPage() {
     }
   }, [user, authLoading, router]);
 
+  // Track page view on component mount
+  useEffect(() => {
+    analytics.trackPageView('Login Page', 'Authentication');
+  }, [analytics]);
+
+  // Check auth recommendations on component mount
+  useEffect(() => {
+    const checkAuthRecommendations = async () => {
+      try {
+        const recommendations = await OfflineAuthService.getAuthRecommendations();
+        setAuthRecommendations(recommendations);
+        
+        if (recommendations.preferredMethod === 'email') {
+          info(recommendations.message, 'Authentication Notice');
+        }
+      } catch (error) {
+        console.warn('Failed to check auth recommendations:', error);
+        // Only show fallback after a delay to avoid premature network errors
+        setTimeout(() => {
+          setAuthRecommendations({
+            preferredMethod: 'both',
+            message: 'All authentication methods available',
+            showGoogleButton: true
+          });
+        }, 2000); // 2 second delay
+      }
+    };
+
+    // Set initial fallback with delay to prevent premature error messages
+    setTimeout(() => {
+      if (!authRecommendations) {
+        setAuthRecommendations({
+          preferredMethod: 'both',
+          message: 'All authentication methods available',
+          showGoogleButton: true
+        });
+      }
+    }, 3000); // 3 second delay for initial fallback
+    
+    checkAuthRecommendations();
+  }, [info, authRecommendations]);
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setError("");
 
     try {
       if (isSignUp) {
         if (!name.trim()) {
-          throw new Error("Name is required for sign up");
+          showErrorToast("Name is required for sign up", "Validation Error");
+          setIsLoading(false);
+          return;
         }
-        const result = await signUp(email, password, name);
-        if (result.error) throw new Error(result.error);
+        
+        const result = await OfflineAuthService.signUpWithEmail(email, password, name);
+        
+        if (!result.success) {
+          if (result.networkIssue) {
+            success("Slow network detected - please wait while we process your sign up...", "Network Status");
+          } else {
+            showErrorToast(result.error!, "Sign Up Error");
+          }
+          setIsLoading(false);
+          return;
+        }
+        
+        // Track successful sign up
+        analytics.trackSignUp('email');
+        success("Account created successfully! Welcome to Amala Discovery Platform.", "Welcome!");
+        
         // Auto-redirect after successful sign-up
         router.push("/");
       } else {
-        const result = await signIn(email, password);
-        if (result.error) throw new Error(result.error);
+        const result = await OfflineAuthService.signInWithEmail(email, password);
+        
+        if (!result.success) {
+          if (result.networkIssue) {
+            success("Slow network detected - please wait while we process your sign in...", "Network Status");
+          } else {
+            showErrorToast(result.error!, "Sign In Error");
+          }
+          setIsLoading(false);
+          return;
+        }
+        
+        // Track successful login
+        analytics.trackLogin('email');
+        success("Welcome back!", "Login Successful");
+        
         router.push("/");
       }
     } catch (error: any) {
-      setError(error.message);
-    } finally {
+      console.error("Auth error:", error);
+      showErrorToast("An unexpected error occurred. Please try again.", "Authentication Error");
       setIsLoading(false);
     }
   };
 
   const handleGoogleAuth = async () => {
     setIsLoading(true);
-    setError(""); // Clear any previous errors
     
     try {
       const result = await signInWithGoogle();
@@ -91,9 +172,9 @@ export default function LoginPage() {
             "Popup Blocked"
           );
         } else if (result.error.includes("network")) {
-          showErrorToast(
-            "Please check your internet connection and try again.",
-            "Network Error"
+          success(
+            "Slow network detected - please wait while we process your Google sign in...",
+            "Network Status"
           );
         } else {
           showErrorToast(result.error, "Sign-in Error");
@@ -101,13 +182,17 @@ export default function LoginPage() {
         throw new Error(result.error);
       }
       
+      // Track successful Google authentication
+      analytics.trackLogin('google');
+      
       // Success or redirect in progress
       console.log("🔄 Google auth initiated successfully");
-      info("Signing you in with Google...", "Please Wait");
+      success("Successfully signed in with Google!", "Welcome!");
+      setIsLoading(false);
       
     } catch (error: any) {
       console.error("❌ Google auth error:", error);
-      setError(error.message);
+      showErrorToast(error.message, "Google Authentication Error");
       setIsLoading(false);
     }
   };
@@ -147,7 +232,10 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <form onSubmit={handleAuth} className="space-y-5">
+            {/* Network Status */}
+            <NetworkStatus className="mb-6" />
+
+            <form onSubmit={handleAuth} className="space-y-6">
               {isSignUp && (
                 <div className="space-y-2">
                   <Label htmlFor="name" className="text-sm font-medium">
@@ -211,69 +299,63 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
-              {error && (
-                <div className="text-sm text-red-600 bg-red-50 p-4 rounded-lg">
-                  {error}
-                </div>
-              )}
               <Button
                 type="submit"
-                className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white h-12 text-base font-medium"
                 disabled={isLoading}
               >
                 {isLoading ? "Loading..." : isSignUp ? "Sign Up" : "Sign In"}
               </Button>
             </form>
 
-            <div className="relative mt-8">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
+            <div className="space-y-4">
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-gray-300" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-3 text-gray-500">
+                    Or continue with
+                  </span>
+                </div>
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-3 text-gray-500">
-                  Or continue with
-                </span>
-              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGoogleAuth}
+                disabled={isLoading}
+                className="w-full h-12 border-orange-200 text-orange-700 hover:bg-orange-50 font-medium"
+              >
+                <svg className="mr-3 h-5 w-5" viewBox="0 0 24 24">
+                  <path
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    fill="#4285F4"
+                  />
+                  <path
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    fill="#34A853"
+                  />
+                  <path
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                    fill="#FBBC05"
+                  />
+                  <path
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    fill="#EA4335"
+                  />
+                </svg>
+                Continue with Google
+              </Button>
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleGoogleAuth}
-              disabled={isLoading}
-              className="w-full mt-4 border-orange-200 text-orange-700 hover:bg-orange-50"
-            >
-              <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
-                <path
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  fill="#4285F4"
-                />
-                <path
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  fill="#34A853"
-                />
-                <path
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  fill="#FBBC05"
-                />
-                <path
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  fill="#EA4335"
-                />
-              </svg>
-              Continue with Google
-            </Button>
-
-            <div className="text-center text-sm mt-6">
+            <div className="text-center text-sm mt-8">
               <p className="text-center text-sm text-gray-600">
                 {isSignUp ? "Already have an account?" : "Don't have an account?"}
                 <button
                   type="button"
-                  className="ml-1 text-orange-600 hover:text-orange-700 font-medium transition-colors"
-                  onClick={() => {
-                    setIsSignUp(!isSignUp);
-                    setError("");
-                  }}
+                  className="ml-2 text-orange-600 hover:text-orange-700 font-medium transition-colors"
+                  onClick={() => setIsSignUp(!isSignUp)}
                 >
                   {isSignUp ? "Sign in" : "Sign up"}
                 </button>
@@ -284,20 +366,20 @@ export default function LoginPage() {
       </div>
 
       {/* Mobile Layout */}
-      <div className="lg:hidden w-full">
+      <div className="lg:hidden w-full px-4">
         <Card className="w-full max-w-md mx-auto">
-          <CardHeader className="space-y-1">
-            <div className="flex items-center justify-center mb-4">
+          <CardHeader className="space-y-1 px-6 pt-8">
+            <div className="flex items-center justify-center mb-6">
               <BrandLogo size="lg" variant="full" />
             </div>
-            <CardDescription className="text-center text-gray-600">
+            <CardDescription className="text-center text-gray-600 text-base">
               {isSignUp
                 ? "Create your account to start discovering amazing Amala spots"
                 : "Sign in to discover the best Amala restaurants worldwide"}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <form onSubmit={handleAuth} className="space-y-4">
+          <CardContent className="space-y-6 px-6 pb-8">
+            <form onSubmit={handleAuth} className="space-y-5">
               {isSignUp && (
                 <div className="space-y-2">
                   <Label htmlFor="name">Full Name</Label>
@@ -357,62 +439,59 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
-              {error && (
-                <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
-                  {error}
-                </div>
-              )}
-              <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white" disabled={isLoading}>
+              <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white h-12 text-base font-medium" disabled={isLoading}>
                 {isLoading ? "Loading..." : isSignUp ? "Sign Up" : "Sign In"}
               </Button>
             </form>
 
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
+            <div className="space-y-4">
+              <div className="relative my-6">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-3 text-gray-500">
+                    Or continue with
+                  </span>
+                </div>
               </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-gray-500">
-                  Or continue with
-                </span>
-              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGoogleAuth}
+                disabled={isLoading}
+                className="w-full h-12 border-orange-200 text-orange-700 hover:bg-orange-50 font-medium"
+              >
+                <svg className="mr-3 h-5 w-5" viewBox="0 0 24 24">
+                  <path
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    fill="#4285F4"
+                  />
+                  <path
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    fill="#34A853"
+                  />
+                  <path
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                    fill="#FBBC05"
+                  />
+                  <path
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    fill="#EA4335"
+                  />
+                </svg>
+                Continue with Google
+              </Button>
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleGoogleAuth}
-              disabled={isLoading}
-              className="w-full border-orange-200 text-orange-700 hover:bg-orange-50"
-            >
-              <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-                <path
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  fill="#4285F4"
-                />
-                <path
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  fill="#34A853"
-                />
-                <path
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  fill="#FBBC05"
-                />
-                <path
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  fill="#EA4335"
-                />
-              </svg>
-              Continue with Google
-            </Button>
-
-            <div className="text-center text-sm">
+            <div className="text-center text-sm mt-6">
               <p className="text-gray-600">
                 {isSignUp ? "Already have an account?" : "Don't have an account?"}
                 <button
                   type="button"
                   onClick={() => setIsSignUp(!isSignUp)}
-                  className="ml-1 text-orange-600 hover:text-orange-700 font-medium transition-colors"
+                  className="ml-2 text-orange-600 hover:text-orange-700 font-medium transition-colors"
                 >
                   {isSignUp ? "Sign in" : "Sign up"}
                 </button>

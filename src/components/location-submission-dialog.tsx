@@ -5,6 +5,7 @@ import {
   SparklesIcon,
   DocumentTextIcon,
 } from "@heroicons/react/24/outline";
+import { useAnalytics } from "@/hooks/useAnalytics";
 import {
   Dialog,
   DialogContent,
@@ -28,9 +29,28 @@ export function LocationSubmissionDialog({
   onSubmit,
 }: LocationSubmissionDialogProps) {
   const [activeTab, setActiveTab] = useState<'ai' | 'manual'>('ai');
+  const analytics = useAnalytics();
 
   const handleManualSubmit = async (location: LocationResult) => {
+    // Track manual location submission
+    analytics.trackLocationSubmission('manual', {
+      name: location.name,
+      images: location.photos,
+    });
+    
     await onSubmit([location]);
+  };
+
+  const handleAISubmit = async (locations: LocationResult[]) => {
+    // Track AI-powered location submissions
+    locations.forEach(location => {
+      analytics.trackLocationSubmission('ai_intake', {
+        name: location.name,
+        images: location.photos,
+      });
+    });
+    
+    await onSubmit(locations);
   };
 
   return (
@@ -79,7 +99,7 @@ export function LocationSubmissionDialog({
             <LocationAssistant
               isOpen={true}
               onClose={onClose}
-              onSubmit={onSubmit}
+              onSubmit={handleAISubmit}
               isEmbedded={true}
             />
           ) : (

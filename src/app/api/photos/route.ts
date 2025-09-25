@@ -1,10 +1,8 @@
 // Photo upload API - Handle restaurant photo uploads with Cloudinary
 import { NextRequest, NextResponse } from "next/server";
 import { rateLimit, verifyBearerToken } from "@/lib/auth";
-import { firebaseOperations } from "@/lib/firebase/database";
+import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
 import cloudinary, { getUploadOptions } from "@/lib/cloudinary/config";
-import { collection, addDoc, query, where, getDocs, orderBy, limit as firestoreLimit, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 
 // POST /api/photos/upload - Upload photos for restaurants (requires auth)
 export async function POST(request: NextRequest) {
@@ -70,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if location exists
-    const location = await firebaseOperations.getLocationById(locationId);
+    const location = await adminFirebaseOperations.getLocationById(locationId);
     if (!location) {
       return NextResponse.json(
         { success: false, error: "Location not found" },
@@ -102,49 +100,38 @@ export async function POST(request: NextRequest) {
       const result = uploadResult as any;
       const downloadURL = result.secure_url;
 
-      // Save photo metadata to Firestore
-      const photosRef = collection(db, 'restaurant_photos');
-      const photoDoc = await addDoc(photosRef, {
+      // Save photo metadata to Firestore using admin SDK
+      const photoId = await adminFirebaseOperations.createPhoto({
         location_id: locationId,
-        locationId: locationId,
-        uploaded_by: user.id,
-        uploader_name: user.email?.split('@')[0] || "Anonymous",
-        photo_url: downloadURL,
-        caption: caption || null,
+        user_id: user.id,
+        user_name: user.email?.split('@')[0] || "Anonymous",
+        cloudinary_url: downloadURL,
         cloudinary_public_id: result.public_id,
-        file_size: file.size,
-        content_type: file.type,
-        width: result.width,
-        height: result.height,
-        status: "approved", // Auto-approve for now, can add moderation later
-        created_at: Timestamp.now(),
-        createdAt: Timestamp.now(),
+        description: caption || "",
+        status: "pending", // Photos require moderation before publication
       });
 
-      // Log analytics event
-      const analyticsRef = collection(db, 'analytics_events');
-      await addDoc(analyticsRef, {
+      // Log analytics event using admin SDK
+      await adminFirebaseOperations.createAnalyticsEvent({
         event_type: "photo_uploaded",
         location_id: locationId,
         metadata: {
-          photo_id: photoDoc.id,
+          photo_id: photoId,
           file_size: file.size,
           content_type: file.type,
           user_id: user.id,
         },
-        user_id: user.id,
-        created_at: Timestamp.now(),
       });
 
       return NextResponse.json({
         success: true,
         photo: {
-          id: photoDoc.id,
+          id: photoId,
           url: downloadURL,
           caption: caption,
-          status: "approved",
+          status: "pending",
         },
-        message: "Photo uploaded successfully!",
+        message: "Photo uploaded and submitted for moderation!",
       });
     } catch (uploadError) {
       console.error("Cloudinary photo upload error:", uploadError);
@@ -177,34 +164,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get approved photos for the location
-    const photosRef = collection(db, 'restaurant_photos');
-    const photosQuery = query(
-      photosRef,
-      where('location_id', '==', locationId),
-      where('status', '==', 'approved'),
-      orderBy('created_at', 'desc'),
-      firestoreLimit(limit)
-    );
-
-    const photosSnapshot = await getDocs(photosQuery);
-    const photos = photosSnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        photo_url: data.photo_url,
-        caption: data.caption,
-        uploader_name: data.uploader_name,
-        created_at: data.created_at?.toDate()?.toISOString() || new Date().toISOString(),
-      };
-    });
-
-    // Get total count (simplified - just return current page info)
-    const totalPages = Math.ceil(photos.length / limit);
+    // Get approved photos for the location using admin SDK
+    const photos = await adminFirebaseOperations.getPhotosByLocation(locationId, limit);
 
     return NextResponse.json({
       success: true,
-      photos: photos || [],
+      photos: photos.map(photo => ({
+        id: photo.id,
+        photo_url: photo.cloudinary_url,
+        caption: photo.description,
+        uploader_name: photo.user_name,
+        created_at: photo.uploaded_at?.toISOString() || new Date().toISOString(),
+      })),
       pagination: {
         page,
         limit,

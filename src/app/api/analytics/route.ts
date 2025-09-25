@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { firebaseOperations } from "@/lib/firebase/database";
 import { rateLimit } from "@/lib/auth";
-import { collection, addDoc, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import { trackApiCall } from '@/lib/cache/memory-cache';
+import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
 
 export async function POST(request: NextRequest) {
   return trackApiCall('/api/analytics')(async () => {
@@ -13,20 +11,19 @@ export async function POST(request: NextRequest) {
       if (!rl.allowed) {
         return NextResponse.json({ success: false, error: "Rate limit exceeded" }, { status: 429 });
       }
+      
       const body = await request.json();
       const { event_type, location_id, metadata } = body || {};
+      
       if (!event_type) {
         return NextResponse.json({ success: false, error: "event_type required" }, { status: 400 });
       }
 
-      // Log analytics event to Firebase
-      const analyticsRef = collection(db, 'analytics_events');
-      await addDoc(analyticsRef, {
+      // Log analytics event using admin SDK
+      await adminFirebaseOperations.createAnalyticsEvent({
         event_type,
-        location_id: location_id || null,
-        metadata: metadata || {},
-        created_at: Timestamp.now(),
-        createdAt: Timestamp.now(),
+        location_id,
+        metadata
       });
 
       return NextResponse.json({ success: true });
@@ -41,23 +38,23 @@ export async function GET() {
   return trackApiCall('/api/analytics')(async () => {
     try {
       // Basic 7-day metrics summary
-      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-      const analyticsRef = collection(db, 'analytics_events');
-      const q = query(
-        analyticsRef,
-        where('created_at', '>=', Timestamp.fromDate(since))
-      );
-
-      const snapshot = await getDocs(q);
+      const events = await adminFirebaseOperations.getAnalyticsEvents(7);
       const counts: Record<string, number> = {};
 
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const eventType = data.event_type;
+      events.forEach(event => {
+        const eventType = event.event_type;
         counts[eventType] = (counts[eventType] || 0) + 1;
       });
 
-      return NextResponse.json({ success: true, data: { counts, since: since.toISOString() } });
+      const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      return NextResponse.json({ 
+        success: true, 
+        data: { 
+          counts, 
+          since: since.toISOString(),
+          total_events: events.length
+        } 
+      });
     } catch (error) {
       console.error('Analytics GET error:', error);
       return NextResponse.json({ success: false, error: "Failed to get analytics" }, { status: 500 });

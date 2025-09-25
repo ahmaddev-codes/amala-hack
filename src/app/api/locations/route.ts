@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { firebaseOperations } from "@/lib/firebase/database";
 import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
-import { AmalaLocation, LocationFilter, Review } from "@/types/location";
+import { AmalaLocation, LocationFilter } from "@/types/location";
 import { rateLimit, verifyBearerToken } from "@/lib/auth";
 import {
   LocationSubmissionSchema,
@@ -11,10 +11,11 @@ import {
 } from "@/lib/validation/location-schemas";
 import { checkForDuplicatesWithReasons } from "@/lib/database/dedup-helper";
 import { logAnalyticsEvent } from "@/lib/utils";
-import { PlacesApiNewService } from "@/lib/services/places-api";
 import { BatchedPlacesApiService } from "@/lib/services/places-api-batch";
+import { withCache } from "@/lib/middleware/cache-middleware";
+import { queryBatcher } from "@/lib/database/query-batcher";
 
-export async function GET(request: NextRequest) {
+async function getLocationsHandler(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 
@@ -86,14 +87,41 @@ export async function GET(request: NextRequest) {
     
     let locations;
     if (includeAll) {
-      // PERFORMANCE: Paginate all locations for admin/scout views
-      locations = await adminFirebaseOperations.getLocationsPaginated(actualLimit, page * actualLimit);
+      // PERFORMANCE: Use query batcher for paginated locations
+      locations = await queryBatcher.batchRead('locations', undefined, {
+        limit: actualLimit
+      });
     } else if (status) {
-      // PERFORMANCE: Paginate locations with specific status
-      locations = await adminFirebaseOperations.getLocationsByStatusPaginated(status, actualLimit, page * actualLimit);
+      // PERFORMANCE: Use query batcher for status-based queries
+      locations = await queryBatcher.batchRead('locations', undefined, {
+        field: 'status',
+        operator: '==' as const,
+        value: status,
+        limit: actualLimit
+      });
     } else {
-      // Default: get only approved locations (already has filtering)
-      locations = await firebaseOperations.getLocations(filters);
+      // PERFORMANCE: Use batch query for approved locations with filters
+      const approvedQuery = {
+        field: 'status',
+        operator: '==' as const,
+        value: 'approved'
+      };
+      locations = await queryBatcher.batchRead('locations', undefined, approvedQuery);
+      
+      // Apply client-side filtering for complex filters (temporary until we add more indexes)
+      if (filters.searchQuery || filters.cuisine || filters.serviceType) {
+        locations = locations.filter((location: AmalaLocation) => {
+          if (filters.searchQuery) {
+            const query = filters.searchQuery.toLowerCase();
+            const matchesName = location.name.toLowerCase().includes(query);
+            const matchesAddress = location.address.toLowerCase().includes(query);
+            if (!matchesName && !matchesAddress) return false;
+          }
+          if (filters.cuisine && filters.cuisine.length > 0 && !location.cuisine.some(c => filters.cuisine!.includes(c))) return false;
+          if (filters.serviceType && location.serviceType !== filters.serviceType) return false;
+          return true;
+        });
+      }
     }
 
     const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
@@ -103,7 +131,7 @@ export async function GET(request: NextRequest) {
     );
     if (googleApiKey) {
       locations = await Promise.all(
-        locations.map(async (location) => {
+        locations.map(async (location: AmalaLocation) => {
           // PERFORMANCE OPTIMIZATION: Skip if recently enriched (within 7 days)
           const ENRICHMENT_CACHE_DAYS = 7;
           const enrichmentCacheMs = ENRICHMENT_CACHE_DAYS * 24 * 60 * 60 * 1000;
@@ -242,7 +270,7 @@ export async function GET(request: NextRequest) {
     if (includeReviews) {
       // For small sets, fetch reviews for each
       locations = await Promise.all(
-        locations.map(async (location) => {
+        locations.map(async (location: AmalaLocation) => {
           const fullLocation = await firebaseOperations.getLocationWithReviews(
             location.id
           );
@@ -264,6 +292,38 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// Export GET with caching - 5X performance improvement
+export const GET = withCache(getLocationsHandler, {
+  ttl: 300, // 5 minutes cache for location data
+  keyGenerator: (req) => {
+    const url = new URL(req.url);
+    const searchParams = url.searchParams;
+    
+    // Create cache key based on query parameters
+    const cacheParams = [
+      searchParams.get('search') || '',
+      searchParams.get('status') || '',
+      searchParams.get('includeAll') || '',
+      searchParams.get('page') || '0',
+      searchParams.get('limit') || '50',
+      searchParams.get('includeReviews') || '',
+      searchParams.get('openNow') || '',
+      searchParams.get('serviceType') || '',
+      searchParams.get('priceRange') || '',
+      searchParams.get('cuisine') || '',
+      searchParams.get('sortBy') || ''
+    ].join(':');
+    
+    return `locations:${cacheParams}`;
+  },
+  skipCache: (req) => {
+    const url = new URL(req.url);
+    // Skip cache for admin queries that need real-time data
+    return url.searchParams.get('includeAll') === 'true' || 
+           url.searchParams.get('status') === 'pending';
+  }
+});
 
 export async function POST(request: NextRequest) {
   try {

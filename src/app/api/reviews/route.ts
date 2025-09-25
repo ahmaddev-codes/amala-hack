@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
 import { verifyFirebaseToken } from "@/lib/firebase/auth-middleware";
 import { z } from "zod";
-import { requireRole, verifyBearerToken } from "@/lib/auth";
 
 const ReviewSubmissionSchema = z.object({
   location_id: z.string().min(1),
@@ -99,17 +98,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user has already reviewed this location
-    const existingReviews = await adminFirebaseOperations.getReviewsByLocationAndUser(
-      validatedReview.location_id,
-      user.uid
-    );
-    if (existingReviews.length > 0) {
-      return NextResponse.json(
-        { success: false, error: "You have already reviewed this location" },
-        { status: 409 }
-      );
-    }
+    // Allow multiple reviews per user per location
+    console.log(`User ${user.uid} submitting review for location ${validatedReview.location_id}`);
 
     // Create review using admin SDK
     const newReview = await adminFirebaseOperations.createReview({
@@ -118,6 +108,34 @@ export async function POST(request: NextRequest) {
       user_name: user.name || "Anonymous",
       user_photo: user.picture || null,
     });
+
+    // If review has photos and is auto-approved, add them to location photos
+    if (validatedReview.photos && validatedReview.photos.length > 0) {
+      console.log(`Adding ${validatedReview.photos.length} photos from review to location photos`);
+      
+      try {
+        // Add each photo to the location's photo collection
+        for (const photoUrl of validatedReview.photos) {
+          // Extract public_id from Cloudinary URL for proper storage
+          const publicIdMatch = photoUrl.match(/\/([^\/]+)\.(jpg|jpeg|png|gif|webp)$/i);
+          const publicId = publicIdMatch ? publicIdMatch[1] : `review_photo_${Date.now()}`;
+          
+          await adminFirebaseOperations.createPhoto({
+            location_id: validatedReview.location_id,
+            cloudinary_url: photoUrl,
+            cloudinary_public_id: publicId,
+            user_id: user.uid,
+            user_name: user.name || "Anonymous",
+            description: `Photo from review: ${validatedReview.text?.substring(0, 100) || 'User review'}`,
+            status: 'pending' // Photos from reviews also need moderation
+          });
+        }
+        console.log(`✅ Successfully added ${validatedReview.photos.length} photos to location`);
+      } catch (photoError) {
+        console.error('❌ Error adding review photos to location:', photoError);
+        // Don't fail the review submission if photo addition fails
+      }
+    }
 
     // Update location's average rating and review count
     await adminFirebaseOperations.updateLocationRating(validatedReview.location_id);
@@ -140,18 +158,54 @@ export async function GET(request: NextRequest) {
   try {
     const url = new URL(request.url);
     const status = url.searchParams.get("status");
+    const locationId = url.searchParams.get("location_id");
+    const userId = url.searchParams.get("user_id");
+    
+    // Handle user-specific review queries (requires auth)
+    if (locationId && userId) {
+      try {
+        const user = await verifyFirebaseToken(request);
+        
+        // Verify the requesting user matches the user_id parameter
+        if (user.uid !== userId) {
+          return NextResponse.json({ success: false, error: "Forbidden - Can only access your own reviews" }, { status: 403 });
+        }
+        
+        const reviews = await adminFirebaseOperations.getReviewsByLocationAndUser(locationId, userId);
+        return NextResponse.json({ success: true, reviews });
+      } catch (authError) {
+        console.error("❌ Auth failed for user review query:", authError);
+        return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      }
+    }
+    
+    // Handle location-specific reviews (public)
+    if (locationId) {
+      try {
+        const reviews = await adminFirebaseOperations.getReviewsByLocation(locationId);
+        // Filter to only approved reviews for public access
+        const approvedReviews = reviews.filter((review: any) => review.status === 'approved');
+        return NextResponse.json({ success: true, reviews: approvedReviews });
+      } catch (error) {
+        console.error("Error fetching location reviews:", error);
+        return NextResponse.json(
+          { success: false, error: "Failed to fetch location reviews" },
+          { status: 500 }
+        );
+      }
+    }
     
     if (status) {
       // Only allow moderators/admins to filter by status
       try {
-        const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
-        if (!authResult.success || !authResult.user) {
-          return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-        }
+        const user = await verifyFirebaseToken(request);
         
-        const roleCheck = requireRole(authResult.user, ["mod", "admin"]);
-        if (!roleCheck.success) {
-          return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+        // Check if user has mod or admin role
+        const userRoles = await adminFirebaseOperations.getUserRoles(user.email || '');
+        const hasModeratorAccess = userRoles.includes('mod') || userRoles.includes('admin');
+        
+        if (!hasModeratorAccess) {
+          return NextResponse.json({ success: false, error: "Forbidden - Moderator access required" }, { status: 403 });
         }
       } catch (authError) {
         console.error("❌ Auth failed for status filtering:", authError);
@@ -195,15 +249,15 @@ export async function GET(request: NextRequest) {
 // PATCH method for moderating reviews
 export async function PATCH(request: NextRequest) {
   try {
-    // Verify authentication and role
-    const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
-    if (!authResult.success || !authResult.user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
+    // Verify authentication and role using admin SDK
+    const user = await verifyFirebaseToken(request);
     
-    const roleCheck = requireRole(authResult.user, ["mod", "admin"]);
-    if (!roleCheck.success) {
-      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    // Check if user has mod or admin role
+    const userRoles = await adminFirebaseOperations.getUserRoles(user.email || '');
+    const hasModeratorAccess = userRoles.includes('mod') || userRoles.includes('admin');
+    
+    if (!hasModeratorAccess) {
+      return NextResponse.json({ success: false, error: "Forbidden - Moderator access required" }, { status: 403 });
     }
 
     const { reviewId, action, moderatorId } = await request.json();
@@ -227,7 +281,7 @@ export async function PATCH(request: NextRequest) {
     const moderatedReview = await adminFirebaseOperations.updateReviewStatus(
       reviewId,
       status,
-      moderatorId || authResult.user.id
+      moderatorId || user.uid
     );
     console.log(`✅ Review ${reviewId} ${action}d successfully`);
 

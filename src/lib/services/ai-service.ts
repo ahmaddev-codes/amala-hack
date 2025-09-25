@@ -3,8 +3,8 @@ import { LocationSubmission, AmalaLocation } from "@/types/location";
 import { AutonomousDiscoveryService } from "./autonomous-discovery";
 
 // Initialize Google Gemini client
-const genAI = process.env.GOOGLE_GEMINI_API_KEY
-  ? new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY)
+const genAI = process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY
+  ? new GoogleGenerativeAI(process.env.GOOGLE_AI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY!)
   : null;
 
 export interface ConversationMessage {
@@ -37,7 +37,7 @@ export class AILocationService {
     }
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const prompt = `
 You are an advanced AI assistant specialized in helping users add authentic Amala restaurants to a global directory.
@@ -444,7 +444,7 @@ SMART SUGGESTIONS:
     }
 
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const essentialFields = ["name", "address", "priceInfo"];
       const missingEssentials = essentialFields.filter(

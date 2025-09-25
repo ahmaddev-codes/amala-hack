@@ -50,8 +50,11 @@ export function ProtectedRoute({
           "🚫 Missing required roles:",
           requiredRoles,
           "user has:",
-          user?.roles
+          user?.roles,
+          "hasRole function results:",
+          requiredRoles.map(role => ({ role, hasIt: hasRole(role) }))
         );
+        console.log("🔄 Redirecting to:", fallbackPath);
         router.push(fallbackPath);
         return;
       }

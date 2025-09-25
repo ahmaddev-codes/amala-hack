@@ -108,7 +108,7 @@ export function AuthModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md mx-4 sm:mx-auto">
         <DialogHeader>
           <DialogTitle className="text-center text-xl">
             {mode === "signin"

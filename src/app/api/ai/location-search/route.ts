@@ -55,7 +55,7 @@ Query: "${query}"
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${GOOGLE_AI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GOOGLE_AI_API_KEY}`,
       {
         method: "POST",
         headers: {
@@ -111,35 +111,148 @@ Query: "${query}"
   }
 }
 
-// Fallback search using OpenStreetMap (FREE alternative to Google Places)
-async function searchWithOpenStreetMap(query: string): Promise<LocationResult[]> {
+// Search using Google Places API (New)
+async function searchWithGooglePlaces(query: string): Promise<LocationResult[]> {
+  const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  
+  if (!GOOGLE_MAPS_API_KEY) {
+    console.error("Google Maps API key not configured");
+    return [];
+  }
+
   try {
-    const { OpenStreetMapService } = await import('@/lib/services/openstreetmap-service');
-    
     // Extract location hints from query
     const locationHints = extractLocationHints(query);
     
-    // Search for Nigerian restaurants globally
-    const results = await OpenStreetMapService.searchNigerianRestaurants(
-      query,
-      locationHints.city,
-      locationHints.country,
-      5
+    // Build search query for Nigerian/Amala restaurants
+    let searchQuery = `Nigerian restaurant Amala ${query}`;
+    if (locationHints.city) {
+      searchQuery += ` in ${locationHints.city}`;
+    }
+    if (locationHints.country) {
+      searchQuery += ` ${locationHints.country}`;
+    }
+
+    // Use Google Places API (New) Text Search
+    const response = await fetch(
+      `https://places.googleapis.com/v1/places:searchText`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+          "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.priceLevel,places.photos,places.types,places.businessStatus"
+        },
+        body: JSON.stringify({
+          textQuery: searchQuery,
+          maxResultCount: 10,
+          languageCode: "en"
+        })
+      }
     );
 
-    return results.map((place, index) => ({
-      id: `osm_${place.id}`,
-      name: place.name,
-      address: place.address,
-      description: `Nigerian restaurant in ${place.city || place.country}`,
-      coordinates: place.coordinates,
-      source: 'web_search' as const,
-      confidence: Math.min(0.85, 0.6 + (place.importance * 0.3)),
-    }));
+    if (!response.ok) {
+      console.error(`Google Places API error: ${response.status}`);
+      return [];
+    }
+
+    const data = await response.json();
+    const places = data.places || [];
+
+    return places
+      .filter((place: any) => 
+        place.businessStatus === 'OPERATIONAL' &&
+        (place.types?.includes('restaurant') || place.types?.includes('food'))
+      )
+      .slice(0, 5)
+      .map((place: any, index: number) => ({
+        id: `places_${place.id}`,
+        name: place.displayName?.text || 'Unknown Restaurant',
+        address: place.formattedAddress || 'Address not available',
+        description: `Nigerian restaurant serving Amala and traditional dishes`,
+        coordinates: {
+          lat: place.location?.latitude || 0,
+          lng: place.location?.longitude || 0,
+        },
+        rating: place.rating || undefined,
+        priceRange: getPriceRange(place.priceLevel, place.formattedAddress),
+        photos: place.photos?.slice(0, 1).map((photo: any) => 
+          `https://places.googleapis.com/v1/${photo.name}/media?maxHeightPx=400&maxWidthPx=400&key=${GOOGLE_MAPS_API_KEY}`
+        ) || [],
+        source: 'google_places' as const,
+        confidence: Math.min(0.9, 0.7 + (place.rating ? place.rating / 5 * 0.2 : 0)),
+      }));
   } catch (error) {
-    console.error("OpenStreetMap search error:", error);
+    console.error("Google Places search error:", error);
     return [];
   }
+}
+
+// Helper function to convert Google Places price level to actual price ranges
+function getPriceRange(priceLevel?: number, address?: string): string | undefined {
+  if (priceLevel === undefined) return undefined;
+  
+  const currency = getCurrencyByLocation(address);
+  
+  switch (priceLevel) {
+    case 0: return `${currency.symbol}0 - ${currency.symbol}${currency.low}`;
+    case 1: return `${currency.symbol}${currency.low} - ${currency.symbol}${currency.moderate}`;
+    case 2: return `${currency.symbol}${currency.moderate} - ${currency.symbol}${currency.high}`;
+    case 3: return `${currency.symbol}${currency.high} - ${currency.symbol}${currency.veryHigh}`;
+    case 4: return `${currency.symbol}${currency.veryHigh}+`;
+    default: return `${currency.symbol}${currency.low} - ${currency.symbol}${currency.moderate}`;
+  }
+}
+
+// Helper function to get currency by location
+function getCurrencyByLocation(address?: string): {
+  symbol: string;
+  code: string;
+  low: number;
+  moderate: number;
+  high: number;
+  veryHigh: number;
+} {
+  if (!address) {
+    return { symbol: "₦", code: "NGN", low: 500, moderate: 2000, high: 5000, veryHigh: 10000 };
+  }
+
+  const lowerAddress = address.toLowerCase();
+
+  // Nigeria
+  if (lowerAddress.includes("nigeria") || lowerAddress.includes("lagos") || 
+      lowerAddress.includes("abuja") || lowerAddress.includes("ibadan")) {
+    return { symbol: "₦", code: "NGN", low: 500, moderate: 2000, high: 5000, veryHigh: 10000 };
+  }
+
+  // UK
+  if (lowerAddress.includes("uk") || lowerAddress.includes("united kingdom") || 
+      lowerAddress.includes("london") || lowerAddress.includes("manchester") ||
+      lowerAddress.includes("birmingham") || lowerAddress.includes("england")) {
+    return { symbol: "£", code: "GBP", low: 8, moderate: 15, high: 25, veryHigh: 40 };
+  }
+
+  // USA
+  if (lowerAddress.includes("usa") || lowerAddress.includes("united states") || 
+      lowerAddress.includes("new york") || lowerAddress.includes("houston") ||
+      lowerAddress.includes("atlanta") || lowerAddress.includes("chicago")) {
+    return { symbol: "$", code: "USD", low: 10, moderate: 20, high: 35, veryHigh: 50 };
+  }
+
+  // Canada
+  if (lowerAddress.includes("canada") || lowerAddress.includes("toronto") || 
+      lowerAddress.includes("vancouver") || lowerAddress.includes("montreal")) {
+    return { symbol: "C$", code: "CAD", low: 12, moderate: 25, high: 40, veryHigh: 60 };
+  }
+
+  // Australia
+  if (lowerAddress.includes("australia") || lowerAddress.includes("sydney") || 
+      lowerAddress.includes("melbourne") || lowerAddress.includes("brisbane")) {
+    return { symbol: "A$", code: "AUD", low: 15, moderate: 25, high: 40, veryHigh: 60 };
+  }
+
+  // Default to Naira for unknown locations
+  return { symbol: "₦", code: "NGN", low: 500, moderate: 2000, high: 5000, veryHigh: 10000 };
 }
 
 // Helper function to extract location hints from query
@@ -189,10 +302,10 @@ export async function POST(request: NextRequest) {
 
     console.log(`AI Location Search: "${query}" by ${userEmail}`);
 
-    // Search using both Gemini and OpenStreetMap
-    const [geminiResults, osmResults] = await Promise.allSettled([
+    // Search using both Gemini and Google Places
+    const [geminiResults, placesResults] = await Promise.allSettled([
       searchWithGemini(query),
-      searchWithOpenStreetMap(query),
+      searchWithGooglePlaces(query),
     ]);
 
     const locations: LocationResult[] = [];
@@ -202,8 +315,8 @@ export async function POST(request: NextRequest) {
       locations.push(...geminiResults.value);
     }
 
-    if (osmResults.status === 'fulfilled') {
-      locations.push(...osmResults.value);
+    if (placesResults.status === 'fulfilled') {
+      locations.push(...placesResults.value);
     }
 
     // Remove duplicates and sort by confidence

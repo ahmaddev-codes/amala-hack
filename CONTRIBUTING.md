@@ -4,7 +4,7 @@ Thank you for your interest in contributing to the Amala Discovery Platform! Thi
 
 ## 🎯 Project Overview
 
-The Amala Discovery Platform is a crowdsourced global map for discovering and verifying authentic Amala restaurants. We welcome contributions from developers, designers, content creators, and Amala enthusiasts worldwide.
+The Amala Discovery Platform (Amala Map) is a crowdsourced global map for discovering and verifying authentic Amala restaurants. We welcome contributions from developers, designers, content creators, and Amala enthusiasts worldwide.
 
 ## 🚀 Getting Started
 
@@ -20,7 +20,7 @@ The Amala Discovery Platform is a crowdsourced global map for discovering and ve
 
 1. **Fork and Clone**
    ```bash
-   git clone https://github.com/your-username/amala-hack.git
+   git clone https://github.com/ahmaddev-codes/amala-hack.git
    cd amala-hack
    npm install
    ```
@@ -237,7 +237,7 @@ Please report security vulnerabilities privately to the maintainers. Do not crea
 
 - **Issues**: Use GitHub issues for bug reports and feature requests
 - **Discussions**: Use GitHub discussions for general questions
-- **Discord**: Join our Discord for real-time chat (if available)
+- **Discord**: Join our Discord for real-time chat (Will be added as soon as it is available)
 
 ## 🏆 Recognition
 

@@ -6,6 +6,7 @@ import {
   useState,
   useCallback,
   useLayoutEffect,
+  useMemo,
 } from "react";
 import { AmalaLocation } from "@/types/location";
 import {
@@ -13,12 +14,11 @@ import {
   amalaMapStyles,
   createCustomMarker,
   getMapBounds,
-  formatLocationInfo,
 } from "@/lib/google-maps";
 import { MapClusterer } from "@/lib/map-clustering";
 import { ArrowPathIcon as Loader2, ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline";
 import { MapControls } from "./map-controls";
-import { GoogleMapsLocationDetail } from "./google-maps-location-detail";
+import { MapSkeleton } from "@/components/skeletons";
 
 interface MapContainerProps {
   locations: AmalaLocation[];
@@ -52,19 +52,14 @@ export function MapContainer({
   const initializeMap = useCallback(async () => {
     console.log("🔧 initializeMap called, checking mapRef...");
 
-    // Wait a bit for the DOM to be ready
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
     if (!mapRef.current) {
-      console.log("❌ mapRef.current is null, retrying in 500ms...");
-      setTimeout(initializeMap, 500);
+      console.log("❌ mapRef.current is null, will retry...");
       return;
     }
 
     // Double check the element is actually attached to the DOM
     if (!document.contains(mapRef.current)) {
-      console.log("❌ mapRef element not in DOM, retrying in 500ms...");
-      setTimeout(initializeMap, 500);
+      console.log("❌ mapRef element not in DOM, will retry...");
       return;
     }
 
@@ -91,22 +86,18 @@ export function MapContainer({
 
       console.log("🔄 Loading Google Maps API...");
 
-      // Add timeout to prevent infinite loading
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-          reject(new Error("Google Maps API loading timeout (15 seconds)"));
-        }, 15000);
+      // Load Google Maps with improved error handling
+      await loadGoogleMaps({
+        apiKey,
+        libraries: ["places", "geometry"],
       });
 
-      await Promise.race([
-        loadGoogleMaps({
-          apiKey,
-          libraries: ["places", "geometry"],
-        }),
-        timeoutPromise,
-      ]);
-
       console.log("✅ Google Maps API loaded successfully");
+
+      // Verify Google Maps is available
+      if (!window.google || !window.google.maps) {
+        throw new Error("Google Maps API failed to initialize properly");
+      }
 
       // Default to global view
       const defaultCenter = { lat: 20, lng: 0 };
@@ -157,6 +148,12 @@ export function MapContainer({
     }
   }, [onError]);
 
+  // Memoize location IDs to prevent unnecessary marker updates
+  const locationIds = useMemo(() =>
+    locations.map(loc => loc.id).sort().join(','),
+    [locations]
+  );
+
   // Update markers when locations change
   const updateMarkers = useCallback(() => {
     if (!map || !isGoogleMapsLoaded || !clusterer) return;
@@ -203,7 +200,7 @@ export function MapContainer({
             }),
             keepalive: true,
           });
-        } catch {}
+        } catch { }
 
         // Center map on clicked location
         map.panTo(location.coordinates);
@@ -220,8 +217,8 @@ export function MapContainer({
 
     setMarkers(newMarkers);
 
-    // Auto-fit bounds if we have locations
-    if (locations.length > 0) {
+    // Auto-fit bounds if we have locations (only on initial load, not on search)
+    if (locations.length > 0 && markers.length === 0) {
       const bounds = getMapBounds(locations.map((l) => l.coordinates));
       if (bounds) {
         const googleBounds = new window.google.maps.LatLngBounds(
@@ -243,7 +240,7 @@ export function MapContainer({
         );
       }
     }
-  }, [map, locations, onLocationSelect, isGoogleMapsLoaded, clusterer]);
+  }, [map, locationIds, onLocationSelect, isGoogleMapsLoaded, clusterer, markers.length]);
 
   // Handle selected location changes
   useEffect(() => {
@@ -267,22 +264,28 @@ export function MapContainer({
     console.log("🚀 useLayoutEffect triggered, DOM should be ready...");
 
     let mounted = true;
+    let retryCount = 0;
+    const maxRetries = 10;
 
-    // Use a MutationObserver to watch for when the ref actually gets assigned
-    const checkRef = () => {
+    const checkRefAndInitialize = () => {
       if (!mounted) return;
 
       if (mapRef.current && document.contains(mapRef.current)) {
         console.log("⏰ Ref is ready, calling initializeMap");
         initializeMap();
+      } else if (retryCount < maxRetries) {
+        retryCount++;
+        console.log(`🔄 Ref not ready, retry ${retryCount}/${maxRetries}...`);
+        setTimeout(checkRefAndInitialize, 100);
       } else {
-        console.log("🔄 Ref not ready, checking again...");
-        requestAnimationFrame(checkRef);
+        console.error("❌ Failed to initialize map after maximum retries");
+        setError("Failed to initialize map container");
+        setIsLoading(false);
       }
     };
 
-    // Start checking
-    requestAnimationFrame(checkRef);
+    // Start checking immediately
+    checkRefAndInitialize();
 
     return () => {
       mounted = false;
@@ -305,15 +308,13 @@ export function MapContainer({
 
   // Always render the map container, but show overlays for loading/error states
   return (
-    <div className="w-full h-full relative">
+    <div className="w-full h-full relative overflow-hidden">
       {/* Always render the map div so ref gets attached */}
-      <div ref={mapRef} className="w-full h-full" />
+      <div ref={mapRef} className="w-full h-full min-h-0" />
 
       {/* Loading overlay */}
       {isLoading && (
-        <div className="absolute inset-0 w-full h-full bg-white/80 flex items-center justify-center z-10">
-          <div className="w-8 h-8 border-2 border-orange-200 border-t-orange-500 rounded-full animate-spin"></div>
-        </div>
+        <MapSkeleton />
       )}
 
       {/* Error overlay */}
@@ -323,7 +324,7 @@ export function MapContainer({
             <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
               {error.includes("not authorized") ||
-              error.includes("insufficient permissions")
+                error.includes("insufficient permissions")
                 ? "Google Maps APIs Not Enabled"
                 : "Map Unavailable"}
             </h3>
@@ -331,34 +332,34 @@ export function MapContainer({
 
             {(error.includes("not authorized") ||
               error.includes("insufficient permissions")) && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4 text-left">
-                <h4 className="font-medium text-yellow-800 mb-2">
-                  🔧 Quick Fix:
-                </h4>
-                <ol className="text-sm text-yellow-700 space-y-1 list-decimal list-inside">
-                  <li>
-                    Go to{" "}
-                    <a
-                      href="https://console.cloud.google.com/apis/library"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline hover:text-yellow-900"
-                    >
-                      Google Cloud Console
-                    </a>
-                  </li>
-                  <li>
-                    Enable these APIs:
-                    <ul className="ml-4 mt-1 space-y-1 list-disc list-inside">
-                      <li>Maps JavaScript API</li>
-                      <li>Places API</li>
-                      <li>Geocoding API</li>
-                    </ul>
-                  </li>
-                  <li>Refresh this page</li>
-                </ol>
-              </div>
-            )}
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4 text-left">
+                  <h4 className="font-medium text-yellow-800 mb-2">
+                    🔧 Quick Fix:
+                  </h4>
+                  <ol className="text-sm text-yellow-700 space-y-1 list-decimal list-inside">
+                    <li>
+                      Go to{" "}
+                      <a
+                        href="https://console.cloud.google.com/apis/library"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-yellow-900"
+                      >
+                        Google Cloud Console
+                      </a>
+                    </li>
+                    <li>
+                      Enable these APIs:
+                      <ul className="ml-4 mt-1 space-y-1 list-disc list-inside">
+                        <li>Maps JavaScript API</li>
+                        <li>Places API</li>
+                        <li>Geocoding API</li>
+                      </ul>
+                    </li>
+                    <li>Refresh this page</li>
+                  </ol>
+                </div>
+              )}
 
             <button
               onClick={initializeMap}
@@ -388,28 +389,6 @@ export function MapContainer({
             </div>
           </div>
 
-          <div className="absolute bottom-4 left-4 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg p-3 border border-primary/20 transition-all duration-200 hover:shadow-xl hover:bg-white">
-            <h4 className="text-sm font-medium text-primary mb-2">
-              Map Legend
-            </h4>
-            <div className="space-y-1 text-xs">
-              <div className="flex items-center hover:text-primary transition-colors duration-150">
-                <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
-                <span>Open Now</span>
-              </div>
-              <div className="flex items-center hover:text-primary transition-colors duration-150">
-                <div className="w-3 h-3 bg-red-500 rounded-full mr-2"></div>
-                <span>Closed</span>
-              </div>
-              <div className="flex items-center mt-2 hover:text-primary transition-colors duration-150">
-                <span className="text-green-600">$ </span>
-                <span className="text-yellow-600">$$ </span>
-                <span className="text-red-600">$$$ </span>
-                <span className="text-purple-600">$$$$</span>
-                <span className="ml-1">Price Range</span>
-              </div>
-            </div>
-          </div>
         </>
       )}
     </div>
