@@ -59,7 +59,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const showToast = useCallback((toast: Omit<Toast, "id">) => {
     const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const duration = toast.duration || (toast.type === 'error' ? 8000 : 6000);
+    const duration = toast.duration || 5000;
     
     const newToast: Toast = {
       id,
