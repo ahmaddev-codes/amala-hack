@@ -75,56 +75,67 @@ export function ManualLocationForm({ onSubmit, onCancel }: ManualLocationFormPro
   const watchedAddress = watch("address");
   const watchedCoordinates = watch("coordinates");
 
-  // Geocode address using OpenStreetMap Nominatim
+  // Geocode address using Google Geocoding API
   const geocodeAddress = async (address: string) => {
     if (!address.trim()) {
       error("Please enter an address first.", "No Address");
       return;
     }
-    
+
     setIsGeocoding(true);
     try {
       console.log("Geocoding address:", address);
-      
+
+      // Use Google Geocoding API
+      const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+      if (!GOOGLE_MAPS_API_KEY) {
+        throw new Error("Google Maps API key not configured");
+      }
+
       const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&addressdetails=1`,
-        {
-          headers: {
-            'User-Agent': 'Amala-Discovery-Platform/1.0'
-          }
-        }
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`
       );
-      
+
       if (!response.ok) {
         throw new Error(`Geocoding API error: ${response.status} ${response.statusText}`);
       }
-      
+
       const data = await response.json();
       console.log("Geocoding response:", data);
-      
-      if (data && data.length > 0) {
-        const result = data[0];
+
+      if (data.status === 'OK' && data.results && data.results.length > 0) {
+        const result = data.results[0];
         const coordinates = {
-          lat: parseFloat(result.lat),
-          lng: parseFloat(result.lon),
+          lat: result.geometry.location.lat,
+          lng: result.geometry.location.lng,
         };
-        
+
         console.log("Setting coordinates:", coordinates);
         setValue("coordinates.lat", coordinates.lat);
         setValue("coordinates.lng", coordinates.lng);
-        
+
         // Force form to re-validate
         setTimeout(() => {
           setValue("coordinates", coordinates);
         }, 100);
-        
+
         success(`Coordinates found: ${coordinates.lat.toFixed(4)}, ${coordinates.lng.toFixed(4)}`, "Geocoding Success");
-      } else {
+      } else if (data.status === 'ZERO_RESULTS') {
         error("Address not found. Please check the address or enter coordinates manually.", "Geocoding Failed");
+      } else if (data.status === 'OVER_QUERY_LIMIT') {
+        error("Geocoding quota exceeded. Please try again later.", "Quota Exceeded");
+      } else if (data.status === 'REQUEST_DENIED') {
+        error("Geocoding request denied. Please check API configuration.", "Request Denied");
+      } else {
+        error(`Geocoding failed: ${data.status}`, "Geocoding Error");
       }
     } catch (err) {
       console.error("Geocoding error:", err);
-      error(`Failed to geocode address: ${err instanceof Error ? err.message : 'Unknown error'}. Please enter coordinates manually.`, "Geocoding Error");
+      if (err instanceof Error && err.message.includes('API key not configured')) {
+        error("Google Maps API key is not configured. Please contact support.", "Configuration Error");
+      } else {
+        error(`Failed to geocode address: ${err instanceof Error ? err.message : 'Unknown error'}. Please enter coordinates manually.`, "Geocoding Error");
+      }
     } finally {
       setIsGeocoding(false);
     }
@@ -173,7 +184,7 @@ export function ManualLocationForm({ onSubmit, onCancel }: ManualLocationFormPro
               <MapPinIcon className="w-5 h-5 text-orange-600" />
               Basic Information
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="name">Restaurant Name *</Label>
@@ -228,7 +239,7 @@ export function ManualLocationForm({ onSubmit, onCancel }: ManualLocationFormPro
               <MapPinIcon className="w-5 h-5 text-orange-600" />
               Location Details
             </h3>
-            
+
             <div>
               <Label htmlFor="address">Full Address *</Label>
               <div className="flex gap-2 mt-1">
@@ -298,7 +309,7 @@ export function ManualLocationForm({ onSubmit, onCancel }: ManualLocationFormPro
         <Card>
           <CardContent className="p-6">
             <h3 className="text-lg font-semibold mb-4">Contact & Details</h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="phone">Phone Number</Label>
@@ -368,7 +379,7 @@ export function ManualLocationForm({ onSubmit, onCancel }: ManualLocationFormPro
         <Card>
           <CardContent className="p-6">
             <h3 className="text-lg font-semibold mb-4">Cuisine Types *</h3>
-            
+
             <div className="flex gap-2 mb-3">
               <Input
                 value={cuisineInput}
@@ -404,7 +415,7 @@ export function ManualLocationForm({ onSubmit, onCancel }: ManualLocationFormPro
                 </span>
               ))}
             </div>
-            
+
             {errors.cuisine && (
               <p className="text-red-500 text-sm mt-2">{errors.cuisine.message}</p>
             )}
