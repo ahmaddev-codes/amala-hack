@@ -1,4 +1,4 @@
-import { EnrichmentManager } from "@/components/enrichment-manager";
+import EnrichmentManager from "@/components/enrichment-manager";
 
 export default function AdminEnrichmentPage() {
   return (
