@@ -35,15 +35,41 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: roleCheck.error }, { status: 403 });
     }
 
-    const users = await adminFirebaseOperations.searchUsers({
-      query,
-      role: role === "all" ? undefined : role as any,
-      limit
-    });
+    // Try to get users from Firebase Auth first, then from Firestore
+    let users;
+    try {
+      // Get all users from Firebase Auth (this will include all registered users)
+      users = await adminFirebaseOperations.getAllUsers();
+      
+      // Apply filters
+      if (role !== "all") {
+        users = users.filter(user => user.roles.includes(role));
+      }
+      
+      if (query) {
+        const queryLower = query.toLowerCase();
+        users = users.filter(user => 
+          user.email?.toLowerCase().includes(queryLower) ||
+          user.name?.toLowerCase().includes(queryLower)
+        );
+      }
+      
+      // Apply limit
+      if (limit) {
+        users = users.slice(0, limit);
+      }
+    } catch (error) {
+      console.log("Falling back to Firestore users collection");
+      users = await adminFirebaseOperations.searchUsers({
+        query,
+        role: role === "all" ? undefined : role as any,
+        limit
+      });
+    }
     
     return NextResponse.json({
       success: true,
-      data: users,
+      users: users,
       count: users.length
     });
   } catch (error: any) {

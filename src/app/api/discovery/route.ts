@@ -6,18 +6,13 @@ import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
 import axios from "axios";
 import crypto from "crypto";
 import { rateLimit, requireRole, verifyBearerToken } from "@/lib/auth";
-import { collection, addDoc, Timestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 
-// Analytics logging helper function
+// Analytics logging helper function using admin SDK
 async function logAnalyticsEvent(eventType: string, metadata: any = {}) {
   try {
-    const analyticsRef = collection(db, 'analytics_events');
-    await addDoc(analyticsRef, {
+    await adminFirebaseOperations.createAnalyticsEvent({
       event_type: eventType,
       metadata,
-      created_at: Timestamp.now(),
-      createdAt: Timestamp.now(),
     });
   } catch (error) {
     console.error('Failed to log analytics event:', error);

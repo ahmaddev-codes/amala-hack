@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
-import { collection, query, where, getDocs, Timestamp, orderBy, limit } from 'firebase/firestore';
-import { db } from '@/lib/firebase/config';
 import { verifyBearerToken, requireRole } from "@/lib/auth";
 
 // TypeScript interfaces for analytics events
@@ -64,27 +62,20 @@ export async function GET(request: NextRequest) {
     console.log('📊 Fetching analytics events...');
     let discoveryEvents: AnalyticsEvent[] = [];
     try {
-      const analyticsRef = collection(db, 'analytics_events');
-      const discoveryEventsQuery = query(
-        analyticsRef,
-        where('event_type', 'in', ['discovery_started', 'discovery_completed', 'discovery_failed']),
-        where('created_at', '>=', Timestamp.fromDate(since)),
-        orderBy('created_at', 'desc')
-      );
-    
-      console.log('📊 Executing analytics query...');
-      const discoveryEventsSnapshot = await getDocs(discoveryEventsQuery);
-      console.log(`📊 Found ${discoveryEventsSnapshot.docs.length} analytics events`);
+      const allEvents = await adminFirebaseOperations.getAnalyticsEvents(days);
+      console.log(`📊 Found ${allEvents.length} total analytics events`);
       
-      discoveryEvents = discoveryEventsSnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          event_type: data.event_type,
-          created_at: data.created_at.toDate(),
-          metadata: data.metadata || {}
-        };
-      });
+      // Filter for discovery-related events
+      discoveryEvents = allEvents
+        .filter(event => ['discovery_started', 'discovery_completed', 'discovery_failed'].includes(event.event_type))
+        .map(event => ({
+          id: event.id,
+          event_type: event.event_type,
+          created_at: event.created_at instanceof Date ? event.created_at : new Date(event.created_at),
+          metadata: event.metadata || {}
+        }));
+      
+      console.log(`📊 Found ${discoveryEvents.length} discovery analytics events`);
     } catch (error) {
       console.error('❌ Error fetching analytics events:', error);
       // Continue with empty array if analytics collection doesn't exist
@@ -121,27 +112,16 @@ export async function GET(request: NextRequest) {
     // Get recent discovery activity (last 10 events)
     let recentActivity: (AnalyticsEvent & { message: string })[] = [];
     try {
-      const analyticsRef = collection(db, 'analytics_events');
-      const recentActivityQuery = query(
-        analyticsRef,
-        where('event_type', 'in', ['discovery_started', 'discovery_completed', 'discovery_failed']),
-        orderBy('created_at', 'desc'),
-        limit(10)
-      );
-      
-      const recentActivitySnapshot = await getDocs(recentActivityQuery);
-      recentActivity = recentActivitySnapshot.docs.map(doc => {
-        const data = doc.data() as any;
-        return {
-          id: doc.id,
-          event_type: data.event_type,
-          created_at: data.created_at.toDate(),
-          metadata: data.metadata || {},
-          message: getActivityMessage(data.event_type, data.metadata)
-        };
-      });
+      // Use the already fetched discovery events, sort by date and take last 10
+      recentActivity = discoveryEvents
+        .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+        .slice(0, 10)
+        .map(event => ({
+          ...event,
+          message: getActivityMessage(event.event_type, event.metadata)
+        }));
     } catch (error) {
-      console.error('Error fetching recent activity:', error);
+      console.error('Error processing recent activity:', error);
       recentActivity = [];
     }
 

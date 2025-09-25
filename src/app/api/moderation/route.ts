@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
 import { requireRole, verifyBearerToken } from "@/lib/auth";
+import { queryBatcher } from "@/lib/database/query-batcher";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +15,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: roleCheck.error }, { status: 403 });
     }
     
-    const pendingLocations = await adminFirebaseOperations.getPendingLocations();
+    // PERFORMANCE: Use query batcher for pending locations
+    const pendingLocations = await queryBatcher.batchRead('locations', undefined, {
+      field: 'status',
+      operator: '==',
+      value: 'pending'
+    });
 
     return NextResponse.json({
       success: true,
