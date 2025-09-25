@@ -777,9 +777,13 @@ export function MobileBottomSheet({
                           </div>
 
                           <div className="flex items-center gap-2 mb-2">
-                            <Star className="w-3.5 h-3.5 text-yellow-500 fill-current" />
-                            <span className="text-xs text-gray-600">{location.rating || 4.3}</span>
-                            <span className="text-xs text-gray-400">•</span>
+                            {location.rating && (
+                              <>
+                                <Star className="w-3.5 h-3.5 text-yellow-500 fill-current" />
+                                <span className="text-xs text-gray-600">{location.rating}</span>
+                                <span className="text-xs text-gray-400">•</span>
+                              </>
+                            )}
                             <span className="text-xs font-medium text-gray-800">
                               {location.priceInfo || "Pricing available"}
                             </span>
