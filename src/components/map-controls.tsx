@@ -91,9 +91,9 @@ export function MapControls({
 
   return (
     <>
-      {/* Right side controls - stacked vertically with proper spacing */}
-      <div className="absolute top-4 right-4 space-y-2">
-        {/* Zoom Controls */}
+      {/* Right side controls - responsive positioning */}
+      <div className="absolute top-20 xl:top-4 right-4 space-y-2">
+        {/* Zoom Controls - Always visible */}
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
           <button
             onClick={handleZoomIn}
@@ -111,8 +111,8 @@ export function MapControls({
           </button>
         </div>
 
-        {/* Map Type Toggle */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        {/* Map Type Toggle - Hidden on small mobile, visible on larger screens */}
+        <div className="hidden sm:block bg-white rounded-lg shadow-md overflow-hidden">
           <button
             onClick={toggleMapType}
             className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 transition-colors text-sm font-medium text-gray-700"
@@ -123,18 +123,18 @@ export function MapControls({
             {mapType === "roadmap" ? (
               <>
                 <Satellite className="w-4 h-4" />
-                <span className="hidden sm:inline">Satellite</span>
+                <span className="hidden lg:inline">Satellite</span>
               </>
             ) : (
               <>
                 <MapIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Map</span>
+                <span className="hidden lg:inline">Map</span>
               </>
             )}
           </button>
         </div>
 
-        {/* My location button */}
+        {/* My location button - Always visible */}
         <button
           onClick={handleMyLocation}
           className="w-10 h-10 bg-white rounded-lg shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
@@ -143,18 +143,18 @@ export function MapControls({
           <Navigation className="w-4 h-4 text-primary" />
         </button>
 
-        {/* Recenter button */}
+        {/* Recenter button - Hidden on mobile to save space */}
         <button
           onClick={handleRecenter}
-          className="w-10 h-10 bg-white rounded-lg shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
+          className="hidden sm:flex w-10 h-10 bg-white rounded-lg shadow-md items-center justify-center hover:bg-gray-100 transition-colors"
           title="Show all locations"
         >
           <LocateIcon className="w-4 h-4 text-gray-700" />
         </button>
       </div>
 
-      {/* Bottom right controls */}
-      <div className="absolute bottom-4 right-4">
+      {/* Bottom right controls - Hidden on mobile to avoid conflicts with mobile bottom sheet */}
+      <div className="hidden xl:block absolute bottom-4 right-4">
         <button
           onClick={() => setShowLayers(!showLayers)}
           className="w-10 h-10 bg-white rounded-lg shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
@@ -190,14 +190,39 @@ export function MapControls({
         )}
       </div>
 
-      {/* Fullscreen button - separate positioning */}
-      <div className="absolute bottom-16 right-4">
+      {/* Fullscreen button - Hidden on mobile, positioned for desktop */}
+      <div className="hidden xl:block absolute bottom-16 right-4">
         <button
           onClick={handleFullscreen}
           className="w-10 h-10 bg-white rounded-lg shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
           title="Fullscreen"
         >
           <Maximize2 className="w-4 h-4 text-gray-700" />
+        </button>
+      </div>
+      
+      {/* Mobile-only compact controls at bottom left to avoid conflicts */}
+      <div className="xl:hidden absolute bottom-4 left-4 flex gap-2">
+        {/* Map type toggle for mobile */}
+        <button
+          onClick={toggleMapType}
+          className="w-10 h-10 bg-white rounded-lg shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
+          title={mapType === "roadmap" ? "Switch to satellite" : "Switch to map"}
+        >
+          {mapType === "roadmap" ? (
+            <Satellite className="w-4 h-4 text-gray-700" />
+          ) : (
+            <MapIcon className="w-4 h-4 text-gray-700" />
+          )}
+        </button>
+        
+        {/* Recenter button for mobile */}
+        <button
+          onClick={handleRecenter}
+          className="w-10 h-10 bg-white rounded-lg shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
+          title="Show all locations"
+        >
+          <LocateIcon className="w-4 h-4 text-gray-700" />
         </button>
       </div>
     </>

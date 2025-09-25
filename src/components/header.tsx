@@ -9,7 +9,6 @@ import {
   MapPinIcon,
   EyeIcon as Eye,
 } from "@heroicons/react/24/outline";
-import { BrandLogo } from "@/components/ui/brand-logo";
 
 interface HeaderProps {
   onAddLocation: () => void;
@@ -34,6 +33,7 @@ export function Header({
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 });
 
   useEffect(() => {
     const saved = localStorage.getItem("highContrast") === "true";
@@ -59,6 +59,11 @@ export function Header({
     const timer = setTimeout(() => {
       if (searchQuery.trim() && onSearch) {
         onSearch(searchQuery);
+        // Recalculate position before showing results
+        const searchInput = document.querySelector('input[placeholder="Search locations..."]') as HTMLInputElement;
+        if (searchInput) {
+          calculateDropdownPosition(searchInput);
+        }
         setShowSearchResults(true);
       } else {
         setShowSearchResults(false);
@@ -68,9 +73,72 @@ export function Header({
     return () => clearTimeout(timer);
   }, [searchQuery, onSearch]);
 
+  // Clear search results when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showSearchResults && !(event.target as Element)?.closest('[role="search"]') && !(event.target as Element)?.closest('[role="listbox"]')) {
+        setShowSearchResults(false);
+      }
+    };
+
+    if (showSearchResults) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSearchResults]);
+
+  // Recalculate dropdown position on window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (showSearchResults) {
+        const searchInput = document.querySelector('input[placeholder="Search locations..."]') as HTMLInputElement;
+        if (searchInput) {
+          calculateDropdownPosition(searchInput);
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [showSearchResults]);
+
+  const calculateDropdownPosition = (inputElement: HTMLInputElement) => {
+    const rect = inputElement.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    // Find the header container to position dropdown immediately below it
+    const headerElement = inputElement.closest('header');
+    const headerRect = headerElement ? headerElement.getBoundingClientRect() : rect;
+    
+    // Calculate optimal width - use full viewport width on mobile, constrained on desktop
+    const isMobile = viewportWidth < 640;
+    const dropdownWidth = isMobile ? viewportWidth - 32 : Math.min(600, viewportWidth - 32);
+    
+    // Position dropdown immediately below the header, not the input
+    const left = isMobile ? 16 : Math.max(16, headerRect.left);
+    
+    // Position immediately below header with minimal gap
+    const topPosition = headerRect.bottom + 2;
+    
+    // Ensure dropdown doesn't go off screen vertically
+    const dropdownHeight = 240; // max-h-60 = 240px
+    const adjustedTop = topPosition + dropdownHeight > viewportHeight 
+      ? Math.max(16, headerRect.top - dropdownHeight - 2) 
+      : topPosition;
+    
+    setDropdownPosition({
+      top: adjustedTop,
+      left,
+      width: dropdownWidth
+    });
+  };
+
   const handleSearchResultClick = (locationId: string) => {
     setShowSearchResults(false);
     setSearchQuery("");
+    setIsFocused(false);
     onSearchResultSelect?.(locationId);
   };
   return (
@@ -88,7 +156,10 @@ export function Header({
                 placeholder="Search locations..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setIsFocused(true)}
+                onFocus={(e) => {
+                  setIsFocused(true);
+                  calculateDropdownPosition(e.target as HTMLInputElement);
+                }}
                 onBlur={() => setTimeout(() => setIsFocused(false), 200)}
                 className="flex-1 bg-transparent border-0 outline-none text-sm text-gray-900 placeholder-gray-400 min-w-0 focus:ring-0 focus:outline-none px-1 py-1.5"
                 aria-label="Search for Amala restaurants and locations"
@@ -114,9 +185,14 @@ export function Header({
 
             {/* Search results dropdown */}
             {showSearchResults && searchResults.length > 0 && (
-              <div 
+              <div
                 id="search-results"
-                className="absolute left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-200 max-h-60 overflow-y-auto z-60 w-full"
+                className="fixed bg-white rounded-lg shadow-xl border border-gray-200 max-h-60 overflow-y-auto z-[100]"
+                style={{ 
+                  top: `${dropdownPosition.top}px`,
+                  left: `${dropdownPosition.left}px`,
+                  width: `${dropdownPosition.width}px`
+                }}
                 role="listbox"
                 aria-label="Search results"
               >
@@ -141,9 +217,8 @@ export function Header({
                           </div>
                         </div>
                         <div
-                          className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                            result.isOpenNow ? "bg-green-500" : "bg-red-500"
-                          }`}
+                          className={`w-2 h-2 rounded-full flex-shrink-0 ${result.isOpenNow ? "bg-green-500" : "bg-red-500"
+                            }`}
                         />
                       </div>
                     </button>
@@ -158,9 +233,8 @@ export function Header({
             <button
               onClick={toggleHighContrast}
               aria-pressed={highContrast}
-              className={`p-1.5 rounded-full hover:bg-gray-100/90 text-gray-600 hover:text-gray-900 transition-colors active:scale-95 duration-200 hidden sm:block ${
-                highContrast ? 'ring-2 ring-blue-500 bg-blue-50 text-blue-700' : ''
-              }`}
+              className={`p-1.5 rounded-full hover:bg-gray-100/90 text-gray-600 hover:text-gray-900 transition-colors active:scale-95 duration-200 hidden sm:block ${highContrast ? 'ring-2 ring-blue-500 bg-blue-50 text-blue-700' : ''
+                }`}
               aria-label={`${highContrast ? 'Disable' : 'Enable'} high contrast mode`}
               title={`${highContrast ? 'Disable' : 'Enable'} high contrast mode`}
             >

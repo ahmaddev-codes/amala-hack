@@ -37,11 +37,11 @@ interface DiscoverySession {
   result?: DiscoveryResult;
 }
 
-interface EnhancedDiscoveryPanelProps {
+interface DiscoveryPanelProps {
   onDiscoveryComplete?: (result: DiscoveryResult) => void;
 }
 
-export function EnhancedDiscoveryPanel({ onDiscoveryComplete }: EnhancedDiscoveryPanelProps = {}) {
+export default function DiscoveryPanel({ onDiscoveryComplete }: DiscoveryPanelProps = {}) {
   const [isRunning, setIsRunning] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState<string>('');
   const [selectedCountry, setSelectedCountry] = useState<string>('');
@@ -50,7 +50,7 @@ export function EnhancedDiscoveryPanel({ onDiscoveryComplete }: EnhancedDiscover
   const [targetQuery, setTargetQuery] = useState('');
   const [sessions, setSessions] = useState<DiscoverySession[]>([]);
   const [currentSession, setCurrentSession] = useState<DiscoverySession | null>(null);
-  
+
   const { getIdToken } = useAuth();
   const { success, error, info } = useToast();
 
@@ -79,13 +79,13 @@ export function EnhancedDiscoveryPanel({ onDiscoveryComplete }: EnhancedDiscover
 
   const startDiscovery = async () => {
     if (isRunning) return;
-    
+
     try {
       setIsRunning(true);
       const startTime = new Date();
-      
+
       const locationContext = getLocationContext();
-      
+
       const session: DiscoverySession = {
         id: `discovery-${Date.now()}`,
         region: locationContext,
@@ -94,11 +94,11 @@ export function EnhancedDiscoveryPanel({ onDiscoveryComplete }: EnhancedDiscover
         locationsFound: 0,
         locationsSaved: 0
       };
-      
+
       setCurrentSession(session);
       setSessions(prev => [session, ...prev]);
       info(`Starting ${locationContext} discovery...`, 'Discovery Started');
-      
+
       const token = await getIdToken();
       const response = await fetch('/api/discovery', {
         method: 'POST',
@@ -113,9 +113,9 @@ export function EnhancedDiscoveryPanel({ onDiscoveryComplete }: EnhancedDiscover
           continent: discoveryType === 'continent' ? selectedRegion : undefined
         })
       });
-      
+
       const data = await response.json();
-      
+
       if (data.success) {
         const result: DiscoveryResult = {
           totalDiscovered: data.data.summary.totalDiscovered,
@@ -125,22 +125,22 @@ export function EnhancedDiscoveryPanel({ onDiscoveryComplete }: EnhancedDiscover
           regions: [locationContext],
           duration: Date.now() - startTime.getTime()
         };
-        
+
         const completedSession = {
           ...session,
           endTime: new Date(),
           status: 'completed' as const,
           result
         };
-        
+
         setCurrentSession(completedSession);
         setSessions(prev => prev.map(s => s.id === session.id ? completedSession : s));
-        
+
         success(
           `Discovery completed! Found ${result.savedToDatabase} new locations in ${locationContext}.`,
           'Discovery Complete'
         );
-        
+
         // Call the callback if provided
         onDiscoveryComplete?.(result);
       } else {
@@ -152,10 +152,10 @@ export function EnhancedDiscoveryPanel({ onDiscoveryComplete }: EnhancedDiscover
         endTime: new Date(),
         status: 'failed' as const
       };
-      
+
       setCurrentSession(failedSession);
       setSessions(prev => prev.map(s => s.id === currentSession!.id ? failedSession : s));
-      
+
       error(`Discovery failed: ${err.message}`, 'Discovery Error');
     } finally {
       setIsRunning(false);
@@ -200,13 +200,13 @@ export function EnhancedDiscoveryPanel({ onDiscoveryComplete }: EnhancedDiscover
     }
   };
 
-  const DiscoveryTypeCard = ({ 
-    type, 
-    title, 
-    description, 
-    icon: Icon, 
-    isSelected, 
-    onClick 
+  const DiscoveryTypeCard = ({
+    type,
+    title,
+    description,
+    icon: Icon,
+    isSelected,
+    onClick
   }: {
     type: string;
     title: string;
@@ -217,16 +217,14 @@ export function EnhancedDiscoveryPanel({ onDiscoveryComplete }: EnhancedDiscover
   }) => (
     <div
       onClick={onClick}
-      className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
-        isSelected
-          ? 'border-orange-500 bg-orange-50'
-          : 'border-gray-200 hover:border-gray-300'
-      }`}
+      className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${isSelected
+        ? 'border-orange-500 bg-orange-50'
+        : 'border-gray-200 hover:border-gray-300'
+        }`}
     >
       <div className="flex items-center space-x-3">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-          isSelected ? 'bg-orange-100' : 'bg-gray-100'
-        }`}>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isSelected ? 'bg-orange-100' : 'bg-gray-100'
+          }`}>
           <Icon className={`w-5 h-5 ${isSelected ? 'text-orange-600' : 'text-gray-600'}`} />
         </div>
         <div>
@@ -273,7 +271,7 @@ export function EnhancedDiscoveryPanel({ onDiscoveryComplete }: EnhancedDiscover
             {session.startTime.toLocaleTimeString()}
           </span>
         </div>
-        
+
         {session.result && (
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
@@ -423,7 +421,7 @@ export function EnhancedDiscoveryPanel({ onDiscoveryComplete }: EnhancedDiscover
       {/* Configuration */}
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-semibold mb-4">Configuration</h3>
-        
+
         {/* Configuration options can be added here for specific discovery types */}
 
         <div className="flex items-center justify-between pt-4">

@@ -43,54 +43,66 @@ export const amalaMapStyles: MapStyles[] = [
 // Load Google Maps API
 export const loadGoogleMaps = (config: GoogleMapsConfig): Promise<void> => {
   return new Promise((resolve, reject) => {
-    // Force reload if API key has changed - remove existing script and reload
+    // Check if Google Maps is already loaded
+    if (window.google && window.google.maps) {
+      console.log("✅ Google Maps already loaded");
+      resolve();
+      return;
+    }
+
+    // Check if script is already loading
     const existingScript = document.querySelector(
       'script[src*="maps.googleapis.com"]'
     );
     if (existingScript) {
-      // Remove existing script to force reload with new API key
-      existingScript.remove();
-      // Clear Google Maps from window to force fresh load
-      if (window.google) {
-        delete (window as any).google;
-      }
-      if ((window as any).initMap) {
-        delete (window as any).initMap;
-      }
-    }
-    const script = document.createElement("script");
-    const libraries = config.libraries?.join(",") || "places,geometry";
-
-    // Add cache-busting timestamp and version to force fresh load
-    const timestamp = Date.now();
-    const version = `3.${Math.floor(timestamp / 1000)}`; // Create unique version
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${config.apiKey}&libraries=${libraries}&loading=async&v=${version}&callback=initMap&_t=${timestamp}&_cache_bust=${config.apiKey.slice(-8)}`;
-    script.async = true;
-    script.defer = true;
-
-    // Define the callback function if not already defined
-    if (typeof window !== 'undefined' && !window.initMap) {
-      (window as any).initMap = () => {
+      console.log("🔄 Google Maps script already exists, waiting for load...");
+      // Wait for existing script to load
+      const checkLoaded = () => {
         if (window.google && window.google.maps) {
           resolve();
         } else {
-          reject(new Error("Google Maps failed to load"));
+          setTimeout(checkLoaded, 100);
         }
       };
+      checkLoaded();
+      return;
     }
 
-    script.onload = () => {
-      // Callback will handle resolution
+    console.log("📦 Loading Google Maps API script...");
+    const script = document.createElement("script");
+    const libraries = config.libraries?.join(",") || "places,geometry";
+    const callbackName = `initGoogleMaps_${Date.now()}`;
+
+    // Create unique callback function
+    (window as any)[callbackName] = () => {
+      console.log("✅ Google Maps callback executed");
+      if (window.google && window.google.maps) {
+        // Clean up callback
+        delete (window as any)[callbackName];
+        resolve();
+      } else {
+        console.error("❌ Google Maps object not available after callback");
+        reject(new Error("Google Maps failed to initialize"));
+      }
     };
 
+    // Use standard Google Maps API URL without custom versioning
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${config.apiKey}&libraries=${libraries}&callback=${callbackName}`;
+    script.async = true;
+    script.defer = true;
+
     script.onerror = (error) => {
+      console.error("❌ Google Maps script failed to load:", error);
+      // Clean up callback
+      delete (window as any)[callbackName];
       reject(
         new Error(
-          "Failed to load Google Maps script - check API key and network"
+          "Failed to load Google Maps script - check API key and network connection"
         )
       );
     };
 
+    console.log("🔗 Adding Google Maps script to document head");
     document.head.appendChild(script);
   });
 };
@@ -219,6 +231,6 @@ export const formatLocationInfo = (location: {
 declare global {
   interface Window {
     google: typeof google;
-    initMap?: () => void;
+    [key: string]: any; // Allow dynamic callback functions
   }
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AuthProvider } from "@/contexts/FirebaseAuthContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { ToastContainer } from "@/components/toast/ToastContainer";
+import { NetworkStatusBanner } from "@/components/ui/network-status";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -79,6 +80,7 @@ export default function RootLayout({
       <body className="antialiased">
         <AuthProvider>
           <ToastProvider>
+            <NetworkStatusBanner />
             {children}
             <ToastContainer />
           </ToastProvider>

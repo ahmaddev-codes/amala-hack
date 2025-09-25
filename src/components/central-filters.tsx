@@ -97,47 +97,47 @@ export function CentralFilters({
   };
 
   return (
-    <div className="fixed top-12 left-1/2 transform -translate-x-1/2 z-40 pointer-events-none">
-      <div className="flex items-center gap-2 pointer-events-auto">
+    <div className="fixed top-1/2 left-4 transform -translate-y-1/2 xl:top-20 xl:left-1/2 xl:transform xl:-translate-x-1/2 xl:translate-y-0 z-40 pointer-events-none">
+      <div className="flex flex-col xl:flex-row items-center gap-2 xl:gap-1 xl:justify-center pointer-events-auto">
+        <div className="flex flex-col xl:flex-row items-center gap-2 xl:gap-1 xl:min-w-max">
         {/* Open Now Filter */}
         <button
           onClick={() => handleOpenNowChange(!isOpenNow)}
-          className={`px-4 py-2 text-sm font-medium rounded-full transition-all duration-200 flex items-center gap-2 shadow-lg backdrop-blur-sm border ${
-            isOpenNow
+          className={`p-3 xl:px-3 xl:py-2 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 flex items-center gap-1 sm:gap-2 shadow-lg backdrop-blur-sm border ${isOpenNow
               ? "bg-[var(--primary)] text-[var(--primary-foreground)] border-[var(--primary)]"
               : "bg-white/90 text-gray-700 dark:text-gray-200 border-gray-200/50 dark:border-gray-700/50 hover:bg-white dark:hover:bg-gray-800 hover:shadow-xl"
-          }`}
+            }`}
+          title="Open now"
         >
           <Clock className="h-4 w-4" />
-          <span>Open now</span>
+          <span className="hidden xl:inline">Open now</span>
         </button>
 
         {/* Service Type Dropdown */}
         <div className="relative" ref={serviceDropdownRef}>
           <button
             onClick={() => setShowServiceDropdown(!showServiceDropdown)}
-            className={`px-4 py-2 text-sm font-medium rounded-full transition-all duration-200 flex items-center gap-2 shadow-lg backdrop-blur-sm border ${
-              serviceType !== "all"
+            className={`p-3 xl:px-3 xl:py-2 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 flex items-center gap-1 sm:gap-2 shadow-lg backdrop-blur-sm border ${serviceType !== "all"
                 ? "bg-[var(--primary)] text-[var(--primary-foreground)] border-[var(--primary)]"
                 : "bg-white/90 text-gray-700 dark:text-gray-200 border-gray-200/50 dark:border-gray-700/50 hover:bg-white dark:hover:bg-gray-800 hover:shadow-xl"
-            }`}
+              }`}
+            title={getServiceTypeLabel()}
           >
             <RestaurantIcon className="h-4 w-4" />
-            <span>{getServiceTypeLabel()}</span>
-            <ChevronDown className={`h-4 w-4 transition-transform ${showServiceDropdown ? 'rotate-180' : ''}`} />
+            <span className="hidden xl:inline">{getServiceTypeLabel()}</span>
+            <ChevronDown className={`h-4 w-4 transition-transform ${showServiceDropdown ? 'rotate-180' : ''} hidden xl:block`} />
           </button>
 
           {showServiceDropdown && (
-            <div className="absolute top-full mt-2 left-0 bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[160px] z-50">
+            <div className="absolute top-full xl:mt-2 left-0 xl:left-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[160px] z-50">
               {serviceTypes.map((service) => (
                 <button
                   key={service.value}
                   onClick={() => handleServiceTypeChange(service.value)}
-                  className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 ${
-                    serviceType === service.value 
-                      ? 'bg-[var(--primary)]/10 text-[var(--primary)] dark:bg-[var(--primary)]/20 dark:text-[var(--primary-foreground)]' 
+                  className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 ${serviceType === service.value
+                      ? 'bg-[var(--primary)]/10 text-[var(--primary)] dark:bg-[var(--primary)]/20 dark:text-[var(--primary-foreground)]'
                       : 'text-gray-700 dark:text-gray-200'
-                  }`}
+                    }`}
                 >
                   {service.icon}
                   {service.label}
@@ -151,28 +151,27 @@ export function CentralFilters({
         <div className="relative" ref={priceDropdownRef}>
           <button
             onClick={() => setShowPriceDropdown(!showPriceDropdown)}
-            className={`px-4 py-2 text-sm font-medium rounded-full transition-all duration-200 flex items-center gap-2 shadow-lg backdrop-blur-sm border ${
-              priceRange.length > 0
+            className={`p-3 xl:px-3 xl:py-2 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 flex items-center gap-1 sm:gap-2 shadow-lg backdrop-blur-sm border ${priceRange.length > 0
                 ? "bg-[var(--primary)] text-[var(--primary-foreground)] border-[var(--primary)]"
                 : "bg-white/90 text-gray-700 dark:text-gray-200 border-gray-200/50 dark:border-gray-700/50 hover:bg-white dark:hover:bg-gray-800 hover:shadow-xl"
-            }`}
+              }`}
+            title={getPriceRangeLabel()}
           >
             <DollarSign className="h-4 w-4" />
-            <span>{getPriceRangeLabel()}</span>
-            <ChevronDown className={`h-4 w-4 transition-transform ${showPriceDropdown ? 'rotate-180' : ''}`} />
+            <span className="hidden xl:inline">{getPriceRangeLabel()}</span>
+            <ChevronDown className={`h-4 w-4 transition-transform ${showPriceDropdown ? 'rotate-180' : ''} hidden xl:block`} />
           </button>
 
           {showPriceDropdown && (
-            <div className="absolute top-full mt-2 left-0 bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[180px] z-50">
+            <div className="absolute top-full xl:mt-2 left-0 xl:left-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 py-2 min-w-[180px] z-50">
               {priceRanges.map((price) => (
                 <button
                   key={price.value}
                   onClick={() => handlePriceRangeToggle(price.value)}
-                  className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between ${
-                    priceRange.includes(price.value) 
-                      ? 'bg-[var(--primary)]/10 text-[var(--primary)] dark:bg-[var(--primary)]/20 dark:text-[var(--primary-foreground)]' 
+                  className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between ${priceRange.includes(price.value)
+                      ? 'bg-[var(--primary)]/10 text-[var(--primary)] dark:bg-[var(--primary)]/20 dark:text-[var(--primary-foreground)]'
                       : 'text-gray-700 dark:text-gray-200'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     <span className="font-medium">{price.label}</span>
@@ -191,12 +190,13 @@ export function CentralFilters({
         {hasActiveFilters && (
           <button
             onClick={clearFilters}
-            className="p-2 rounded-full hover:bg-gray-100/80 dark:hover:bg-gray-700/80 transition-colors bg-white/90 dark:bg-gray-800/90 shadow-lg backdrop-blur-sm border border-gray-200/50 dark:border-gray-700/50"
+            className="p-2 rounded-full hover:bg-gray-100/80 dark:hover:bg-gray-700/80 transition-colors bg-white/90 dark:bg-gray-800/90 shadow-lg backdrop-blur-sm border border-gray-200/50 dark:border-gray-700/50 flex-shrink-0"
             title="Clear all filters"
           >
             <X className="h-4 w-4 text-gray-500" />
           </button>
         )}
+        </div>
       </div>
     </div>
   );

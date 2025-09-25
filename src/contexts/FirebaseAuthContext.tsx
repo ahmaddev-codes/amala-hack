@@ -186,7 +186,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (): Promise<{ error?: string }> => {
     try {
       const provider = new GoogleAuthProvider();
 
@@ -195,17 +195,48 @@ export function AuthProvider({ children }: AuthProviderProps) {
         prompt: 'select_account'
       });
 
+      // Create a timeout promise for network issues
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Google Auth timeout - please check your internet connection'));
+        }, 15000); // 15 second timeout
+      });
+
       try {
-        // First, try popup method
-        const result = await signInWithPopup(auth, provider);
+        // First, try popup method with timeout
+        const result = await Promise.race([
+          signInWithPopup(auth, provider),
+          timeoutPromise
+        ]);
         return {};
       } catch (popupError: any) {
+        // Handle network errors specifically
+        if (popupError.message.includes('timeout') || 
+            popupError.message.includes('Failed to fetch') ||
+            popupError.code === 'auth/network-request-failed') {
+          return { 
+            error: "Network connection issue. Please check your internet connection and try again." 
+          };
+        }
+        
         // If popup is blocked, fall back to redirect
         if (popupError.code === 'auth/popup-blocked' ||
             popupError.code === 'auth/cancelled-popup-request') {
-          await signInWithRedirect(auth, provider);
-          // The redirect will handle the rest, no return needed
-          return {};
+          try {
+            await Promise.race([
+              signInWithRedirect(auth, provider),
+              timeoutPromise
+            ]);
+            // The redirect will handle the rest, no return needed
+            return {};
+          } catch (redirectError: any) {
+            if (redirectError.message.includes('timeout')) {
+              return { 
+                error: "Network connection issue. Please check your internet connection and try again." 
+              };
+            }
+            throw redirectError;
+          }
         } else {
           // Re-throw other errors
           throw popupError;
@@ -220,6 +251,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         errorMessage = "Sign-in was cancelled. Please try again.";
       } else if (error.code === 'auth/network-request-failed') {
         errorMessage = "Network error. Please check your internet connection and try again.";
+      } else if (error.message.includes('timeout') || error.message.includes('Failed to fetch')) {
+        errorMessage = "Network connection issue. Please check your internet connection and try again.";
       }
 
       return { error: errorMessage };

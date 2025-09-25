@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { MapPinIcon as MapPin } from "@heroicons/react/24/outline";
 import { IoStar, IoStarHalf, IoStarOutline } from "react-icons/io5";
-import { AmalaLocation } from "@/types/location";
+import { AmalaLocation, Review } from "@/types/location";
 
 interface LocationReview {
   id: string;
@@ -14,6 +14,7 @@ interface LocationReview {
   author_photo?: string;
   publish_time_description?: string;
   source?: string;
+  date_posted?: string; // Add missing field
 }
 
 interface LocationListProps {
@@ -57,10 +58,15 @@ export function LocationList({
     }
   }, [locations]);
 
-  const getRandomReview = (locationId: string): LocationReview | null => {
+  const getLatestReview = (locationId: string): LocationReview | null => {
     const reviews = locationReviews[locationId] || [];
     if (reviews.length === 0) return null;
-    return reviews[Math.floor(Math.random() * reviews.length)];
+    // Return the most recent review instead of random
+    return reviews.sort((a, b) => {
+      const dateA = a.date_posted ? new Date(a.date_posted).getTime() : 0;
+      const dateB = b.date_posted ? new Date(b.date_posted).getTime() : 0;
+      return dateB - dateA;
+    })[0];
   };
 
   return (
@@ -75,21 +81,21 @@ export function LocationList({
             <div className="flex">
               {/* Left side - Restaurant details */}
               <div className="flex-1 pr-3">
-                {/* Restaurant name - Google Maps fontHeadlineSmall */}
+                {/* Restaurant name */}
                 <div className="mb-1">
                   <h3 className="text-lg font-medium text-gray-900 leading-tight">
                     {loc.name}
                   </h3>
                 </div>
 
-                {/* Rating section - exact Google Maps structure */}
+                {/* Rating section */}
                 <div className="mb-1">
                   <div className="flex items-center">
                     <span className="text-sm font-medium text-gray-900 mr-1">
                       {loc.rating?.toFixed(1) || "4.3"}
                     </span>
 
-                    {/* 5 stars - Google Maps style */}
+                    {/* 5 stars */}
                     <div className="flex items-center mr-1">
                       {[...Array(5)].map((_, i) => {
                         const rating = loc.rating || 4.3;
@@ -115,8 +121,7 @@ export function LocationList({
                       })}
                       <span className="text-sm text-gray-600 ml-1">
                         (
-                        {loc.reviewCount ||
-                          Math.floor(Math.random() * 200) + 11}
+                        {loc.reviewCount || (locationReviews[loc.id]?.length || 0)}
                         )
                       </span>
                     </div>
@@ -132,7 +137,7 @@ export function LocationList({
                   </div>
                 </div>
 
-                {/* Open/closed status - Google Maps styling */}
+                {/* Open/closed status */}
                 <div className="mb-2">
                   <span>
                     <span
@@ -151,7 +156,7 @@ export function LocationList({
                 </div>
               </div>
 
-              {/* Right side - 84x84px image like Google Maps */}
+              {/* Right side */}
               <div
                 className="flex-shrink-0"
                 style={{ width: "84px", height: "84px" }}
@@ -186,7 +191,7 @@ export function LocationList({
           <div className="px-4 pb-4">
             <div className="flex items-start">
               {(() => {
-                const review = getRandomReview(loc.id);
+                const review = getLatestReview(loc.id);
                 if (!review) {
                   return (
                     <div className="text-sm text-gray-500 italic">

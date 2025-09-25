@@ -51,7 +51,7 @@ function ProfileImage({ src, alt, size = 32, className = "" }: { src?: string; a
 
     return (
       <div className="relative" style={{ width: size, height: size }}>
-        <img
+        <Image
           src={googleSrc}
           alt={alt}
           width={size}

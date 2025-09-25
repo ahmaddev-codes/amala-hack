@@ -29,7 +29,7 @@ interface ScoutTool {
   action?: () => void;
 }
 
-export function EnhancedScoutTools() {
+export function ScoutTools() {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [selectedTool, setSelectedTool] = useState<ScoutTool | null>(null);
   const { user } = useAuth();
