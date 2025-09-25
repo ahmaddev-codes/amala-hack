@@ -1,7 +1,6 @@
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import { getStorage } from 'firebase-admin/storage';
 
 // Initialize Firebase Admin SDK
 if (!getApps().length) {
@@ -20,7 +19,6 @@ if (!getApps().length) {
           clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
           privateKey: privateKey,
         }),
-        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
       });
       console.log('✅ Firebase Admin SDK initialized successfully');
     } catch (error) {
@@ -31,7 +29,6 @@ if (!getApps().length) {
 
 export const adminAuth = getAuth();
 export const adminDb = getFirestore();
-export const adminStorage = getStorage();
 
 // Helper function to verify Firebase is properly initialized
 export function isFirebaseAdminInitialized(): boolean {

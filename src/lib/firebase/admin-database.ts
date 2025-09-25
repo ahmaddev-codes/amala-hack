@@ -1,7 +1,6 @@
-import { adminDb } from './admin';
+import { adminDb, adminAuth } from './admin';
 import { AmalaLocation, Review } from "@/types/location";
 import { FieldValue } from 'firebase-admin/firestore';
-import { Timestamp } from 'firebase-admin/firestore';
 
 // Admin database operations that bypass security rules
 class AdminDatabase {
@@ -438,12 +437,28 @@ class AdminDatabase {
     }
   }
 
+  // Get all reviews by location
+  async getReviewsByLocation(locationId: string): Promise<Review[]> {
+    try {
+      const snapshot = await adminDb.collection('reviews')
+        .where('location_id', '==', locationId)
+        .orderBy('createdAt', 'desc')
+        .get();
+        
+      return snapshot.docs.map(doc => this.convertFirestoreReview(doc as FirebaseFirestore.QueryDocumentSnapshot));
+    } catch (error) {
+      console.error(`Error getting reviews for location ${locationId}:`, error);
+      throw error;
+    }
+  }
+
   // Get reviews by location and user
   async getReviewsByLocationAndUser(locationId: string, userId: string): Promise<Review[]> {
     try {
       const snapshot = await adminDb.collection('reviews')
         .where('location_id', '==', locationId)
         .where('user_id', '==', userId)
+        .orderBy('createdAt', 'desc')
         .get();
         
       return snapshot.docs.map(doc => this.convertFirestoreReview(doc as FirebaseFirestore.QueryDocumentSnapshot));
@@ -659,61 +674,79 @@ class AdminDatabase {
     adminEmail: string
   ): Promise<any> {
     try {
-      // First, find or create the user document
-      const userQuery = await adminDb.collection('users').where('email', '==', email).get();
+      const emailLower = email.toLowerCase();
       
-      let userDoc;
-      if (userQuery.empty) {
+      // Use email as document ID for consistent access
+      const userRef = adminDb.collection('users').doc(emailLower);
+      const userDoc = await userRef.get();
+      
+      let userData;
+      let newRoles;
+      
+      if (!userDoc.exists) {
         // Create new user document
-        const newUserRef = await adminDb.collection('users').add({
-          email,
-          roles: action === 'add' ? [role] : [],
+        newRoles = action === 'add' ? ['user', role] : ['user'];
+        userData = {
+          email: emailLower,
+          roles: newRoles,
           createdAt: FieldValue.serverTimestamp(),
           managedBy: adminEmail,
+          lastModified: FieldValue.serverTimestamp(),
+          lastModifiedBy: adminEmail,
+        };
+        await userRef.set(userData);
+      } else {
+        // Update existing user
+        userData = userDoc.data();
+        newRoles = userData?.roles || ['user'];
+        
+        // Ensure 'user' role is always present
+        if (!newRoles.includes('user')) {
+          newRoles.push('user');
+        }
+        
+        if (action === 'add') {
+          if (!newRoles.includes(role)) {
+            newRoles.push(role);
+          }
+        } else {
+          // Don't allow removing 'user' role
+          if (role !== 'user') {
+            newRoles = newRoles.filter((r: string) => r !== role);
+          }
+        }
+        
+        await userRef.update({
+          roles: newRoles,
+          lastModified: FieldValue.serverTimestamp(),
+          lastModifiedBy: adminEmail,
         });
-        userDoc = await newUserRef.get();
-      } else {
-        userDoc = userQuery.docs[0];
       }
-
-      const userData = userDoc.data();
-      const currentRoles = userData?.roles || [];
       
-      let newRoles;
-      if (action === 'add') {
-        newRoles = [...new Set([...currentRoles, role])]; // Add role if not exists
-      } else {
-        newRoles = currentRoles.filter((r: string) => r !== role); // Remove role
-      }
-
-      await userDoc.ref.update({
-        roles: newRoles,
-        lastModified: FieldValue.serverTimestamp(),
-        lastModifiedBy: adminEmail,
-      });
-
       // Log the role change
       await adminDb.collection('moderation_logs').add({
         type: 'role_management',
-        targetEmail: email,
+        targetEmail: emailLower,
         role,
         action,
         adminEmail,
         timestamp: FieldValue.serverTimestamp(),
       });
-
+      
+      console.log(`✅ [manageUserRole] ${action === 'add' ? 'Added' : 'Removed'} role "${role}" ${action === 'add' ? 'to' : 'from'} user ${emailLower}. New roles:`, newRoles);
+      
       return {
-        id: userDoc.id,
-        email,
+        id: emailLower,
+        email: emailLower,
         roles: newRoles,
         lastModified: new Date(),
       };
     } catch (error) {
-      console.error(`Error managing user role for ${email}:`, error);
+      console.error(`❌ [manageUserRole] Error managing user role for ${email}:`, error);
       throw error;
     }
   }
-
+  
   // User Role Management Methods
   async getAllUsersWithRoles(): Promise<any[]> {
     try {
@@ -966,8 +999,263 @@ class AdminDatabase {
       scoutCount: scoutEmails ? scoutEmails.split(',').length : 0,
       totalUniqueUsers: roleMap.size
     });
-
     return roleMap;
+  }
+
+  // Get all users from Firebase Auth
+  async getAllUsers(): Promise<any[]> {
+    try {
+      const users: any[] = [];
+      let pageToken: string | undefined;
+
+      do {
+        const listUsersResult = await adminAuth.listUsers(1000, pageToken);
+        
+        for (const userRecord of listUsersResult.users) {
+          if (!userRecord.email) continue; // Skip users without email
+          
+          // Get user roles from Firestore using email as document ID
+          const emailLower = userRecord.email.toLowerCase();
+          const userDoc = await adminDb.collection('users').doc(emailLower).get();
+          const userData = userDoc.exists ? userDoc.data() : {};
+
+          users.push({
+            id: userRecord.uid,
+            email: userRecord.email,
+            name: userRecord.displayName,
+            displayName: userRecord.displayName,
+            roles: userData?.roles || ['user'],
+            createdAt: userRecord.metadata.creationTime,
+            lastLoginAt: userRecord.metadata.lastSignInTime,
+            isActive: !userRecord.disabled,
+            provider: userRecord.providerData?.[0]?.providerId === 'google.com' ? 'google' : 'email',
+          });
+        }
+
+        pageToken = listUsersResult.pageToken;
+      } while (pageToken);
+
+      console.log(`✅ [getAllUsers] Fetched ${users.length} users from Firebase Auth with roles from Firestore`);
+      return users;
+    } catch (error) {
+      console.error('❌ [getAllUsers] Error fetching all users:', error);
+      throw error;
+    }
+  }
+
+  // Get user submissions
+  async getUserSubmissions(userEmail: string): Promise<any[]> {
+    try {
+      const snapshot = await adminDb
+        .collection('locations')
+        .where('submittedBy', '==', userEmail)
+        .orderBy('submittedAt', 'desc')
+        .get();
+
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: this.convertTimestamp(doc.data().submittedAt),
+        submittedAt: this.convertTimestamp(doc.data().submittedAt),
+      }));
+    } catch (error: any) {
+      console.error('Error fetching user submissions:', error);
+      // If index doesn't exist, return empty array instead of throwing
+      if (error.code === 9 || error.message?.includes('index')) {
+        console.warn('Missing Firestore index for user submissions query. Please deploy indexes.');
+        return [];
+      }
+      return [];
+    }
+  }
+
+  // Get user reviews
+  async getUserReviews(userEmail: string): Promise<any[]> {
+    try {
+      const snapshot = await adminDb
+        .collection('reviews')
+        .where('user_email', '==', userEmail)
+        .orderBy('date_posted', 'desc')
+        .get();
+
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        date_posted: this.convertTimestamp(doc.data().date_posted),
+      }));
+    } catch (error: any) {
+      console.error('Error fetching user reviews:', error);
+      // If index doesn't exist, return empty array instead of throwing
+      if (error.code === 9 || error.message?.includes('index')) {
+        console.warn('Missing Firestore index for user reviews query. Please deploy indexes.');
+        return [];
+      }
+      return [];
+    }
+  }
+
+  // Get user moderation history
+  async getUserModerationHistory(userId: string): Promise<any[]> {
+    try {
+      const snapshot = await adminDb
+        .collection('moderation_logs')
+        .where('moderatorEmail', '==', userId)
+        .orderBy('timestamp', 'desc')
+        .get();
+
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: this.convertTimestamp(doc.data().timestamp),
+      }));
+    } catch (error) {
+      console.error('Error fetching user moderation history:', error);
+      return [];
+    }
+  }
+
+  // Get all reviews
+  async getAllReviews(): Promise<any[]> {
+    try {
+      const snapshot = await adminDb
+        .collection('reviews')
+        .orderBy('date_posted', 'desc')
+        .get();
+
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        date_posted: this.convertTimestamp(doc.data().date_posted),
+      }));
+    } catch (error) {
+      console.error('Error fetching all reviews:', error);
+      return [];
+    }
+  }
+
+  // Create analytics event
+  async createAnalyticsEvent(eventData: {
+    event_type: string;
+    location_id?: string;
+    metadata?: any;
+  }): Promise<string> {
+    try {
+      const docRef = await adminDb.collection('analytics_events').add({
+        ...eventData,
+        location_id: eventData.location_id || null,
+        metadata: eventData.metadata || {},
+        created_at: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        timestamp: FieldValue.serverTimestamp(),
+      });
+      
+      console.log('Analytics event created:', docRef.id);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error creating analytics event:', error);
+      throw error;
+    }
+  }
+
+  // Get analytics events
+  async getAnalyticsEvents(days: number = 30): Promise<any[]> {
+    try {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+
+      const snapshot = await adminDb
+        .collection('analytics_events')
+        .where('created_at', '>=', cutoffDate)
+        .orderBy('created_at', 'desc')
+        .limit(1000)
+        .get();
+
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        created_at: this.convertTimestamp(doc.data().created_at),
+        timestamp: this.convertTimestamp(doc.data().created_at),
+      }));
+    } catch (error) {
+      console.error('Error fetching analytics events:', error);
+      return [];
+    }
+  }
+
+  // Create photo record
+  async createPhoto(photoData: {
+    location_id: string;
+    user_id: string;
+    user_name: string;
+    cloudinary_url: string;
+    cloudinary_public_id: string;
+    description?: string;
+    status?: string;
+  }): Promise<string> {
+    try {
+      // Sanitize data to remove undefined values
+      const sanitizedData = Object.fromEntries(
+        Object.entries(photoData).filter(([_, value]) => value !== undefined)
+      );
+
+      const finalData = {
+        ...sanitizedData,
+        description: sanitizedData.description || "",
+        status: sanitizedData.status || "pending",
+        uploaded_at: FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+      };
+
+      const docRef = await adminDb.collection('restaurant_photos').add(finalData);
+      console.log('Photo record created:', docRef.id);
+      return docRef.id;
+    } catch (error) {
+      console.error('Error creating photo record:', error);
+      throw error;
+    }
+  }
+
+  // Get photos by location
+  async getPhotosByLocation(locationId: string, limit: number = 20): Promise<any[]> {
+    try {
+      const snapshot = await adminDb
+        .collection('restaurant_photos')
+        .where('location_id', '==', locationId)
+        .where('status', '==', 'approved')
+        .orderBy('uploaded_at', 'desc')
+        .limit(limit)
+        .get();
+
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        uploaded_at: this.convertTimestamp(doc.data().uploaded_at),
+      }));
+    } catch (error) {
+      console.error('Error fetching photos by location:', error);
+      return [];
+    }
+  }
+
+  // Get recent photos
+  async getRecentPhotos(limit: number = 50): Promise<any[]> {
+    try {
+      const snapshot = await adminDb
+        .collection('restaurant_photos')
+        .where('status', '==', 'approved')
+        .orderBy('uploaded_at', 'desc')
+        .limit(limit)
+        .get();
+
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        uploaded_at: this.convertTimestamp(doc.data().uploaded_at),
+      }));
+    } catch (error) {
+      console.error('Error fetching recent photos:', error);
+      return [];
+    }
   }
 }
 
