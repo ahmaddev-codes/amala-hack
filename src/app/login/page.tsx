@@ -36,7 +36,6 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
   const [authRecommendations, setAuthRecommendations] = useState<{
     preferredMethod: 'email' | 'google' | 'both';
     message: string;
@@ -107,12 +106,12 @@ export default function LoginPage() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setError("");
 
     try {
       if (isSignUp) {
         if (!name.trim()) {
-          setError("Name is required for sign up");
+          showErrorToast("Name is required for sign up", "Validation Error");
+          setIsLoading(false);
           return;
         }
         
@@ -120,10 +119,11 @@ export default function LoginPage() {
         
         if (!result.success) {
           if (result.networkIssue) {
-            showErrorToast(result.error!, "Network Error");
+            success("Slow network detected - please wait while we process your sign up...", "Network Status");
           } else {
-            setError(result.error!);
+            showErrorToast(result.error!, "Sign Up Error");
           }
+          setIsLoading(false);
           return;
         }
         
@@ -138,10 +138,11 @@ export default function LoginPage() {
         
         if (!result.success) {
           if (result.networkIssue) {
-            showErrorToast(result.error!, "Network Error");
+            success("Slow network detected - please wait while we process your sign in...", "Network Status");
           } else {
-            setError(result.error!);
+            showErrorToast(result.error!, "Sign In Error");
           }
+          setIsLoading(false);
           return;
         }
         
@@ -153,15 +154,13 @@ export default function LoginPage() {
       }
     } catch (error: any) {
       console.error("Auth error:", error);
-      setError("An unexpected error occurred. Please try again.");
-    } finally {
+      showErrorToast("An unexpected error occurred. Please try again.", "Authentication Error");
       setIsLoading(false);
     }
   };
 
   const handleGoogleAuth = async () => {
     setIsLoading(true);
-    setError(""); // Clear any previous errors
     
     try {
       const result = await signInWithGoogle();
@@ -173,9 +172,9 @@ export default function LoginPage() {
             "Popup Blocked"
           );
         } else if (result.error.includes("network")) {
-          showErrorToast(
-            "Please check your internet connection and try again.",
-            "Network Error"
+          success(
+            "Slow network detected - please wait while we process your Google sign in...",
+            "Network Status"
           );
         } else {
           showErrorToast(result.error, "Sign-in Error");
@@ -193,7 +192,7 @@ export default function LoginPage() {
       
     } catch (error: any) {
       console.error("❌ Google auth error:", error);
-      setError(error.message);
+      showErrorToast(error.message, "Google Authentication Error");
       setIsLoading(false);
     }
   };
@@ -300,11 +299,6 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
-              {error && (
-                <div className="text-sm text-red-600 bg-red-50 p-4 rounded-lg">
-                  {error}
-                </div>
-              )}
               <Button
                 type="submit"
                 className="w-full bg-orange-600 hover:bg-orange-700 text-white h-12 text-base font-medium"
@@ -361,10 +355,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   className="ml-2 text-orange-600 hover:text-orange-700 font-medium transition-colors"
-                  onClick={() => {
-                    setIsSignUp(!isSignUp);
-                    setError("");
-                  }}
+                  onClick={() => setIsSignUp(!isSignUp)}
                 >
                   {isSignUp ? "Sign in" : "Sign up"}
                 </button>
@@ -448,11 +439,6 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
-              {error && (
-                <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
-                  {error}
-                </div>
-              )}
               <Button type="submit" className="w-full bg-orange-600 hover:bg-orange-700 text-white h-12 text-base font-medium" disabled={isLoading}>
                 {isLoading ? "Loading..." : isSignUp ? "Sign Up" : "Sign In"}
               </Button>
