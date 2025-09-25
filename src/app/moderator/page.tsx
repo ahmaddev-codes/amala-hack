@@ -403,7 +403,6 @@ function ModeratorDashboard() {
                                         })
                                       });
                                       if (response.ok) {
-                                        success('Location approved!', 'Approved');
                                         fetchPendingData(true);
                                       } else {
                                         const errorData = await response.json();
@@ -435,7 +434,6 @@ function ModeratorDashboard() {
                                         })
                                       });
                                       if (response.ok) {
-                                        success('Location rejected', 'Rejected');
                                         fetchPendingData(true);
                                       } else {
                                         const errorData = await response.json();
