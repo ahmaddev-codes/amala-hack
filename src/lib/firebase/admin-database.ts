@@ -36,6 +36,33 @@ class AdminDatabase {
     } as Review;
   }
 
+  // Get moderator name from users collection or format email
+  private async getModeratorName(moderatorEmail: string): Promise<string> {
+    try {
+      const userDoc = await adminDb.collection('users').doc(moderatorEmail.toLowerCase()).get();
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        return userData?.name || userData?.displayName || this.formatEmailAsName(moderatorEmail);
+      }
+      return this.formatEmailAsName(moderatorEmail);
+    } catch (error) {
+      console.warn(`Could not fetch moderator name for ${moderatorEmail}:`, error);
+      return this.formatEmailAsName(moderatorEmail);
+    }
+  }
+
+  // Format email as a readable name
+  private formatEmailAsName(email: string): string {
+    if (!email) return 'Unknown';
+    const emailPrefix = email.split('@')[0];
+    // Capitalize first letter and replace dots/underscores with spaces
+    return emailPrefix
+      .replace(/[._]/g, ' ')
+      .split(' ')
+      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
+  }
+
   // Moderate a location (approve/reject)
   async moderateLocation(
     locationId: string,
@@ -44,6 +71,14 @@ class AdminDatabase {
   ): Promise<AmalaLocation> {
     try {
       const locationRef = adminDb.collection('locations').doc(locationId);
+      
+      // Get the location data before updating for logging
+      const locationDoc = await locationRef.get();
+      const locationData = locationDoc.data();
+      
+      // Get moderator name
+      const moderatorName = await this.getModeratorName(moderatorId);
+      
       const updateData = {
         status: action === 'approve' ? 'approved' : 'rejected',
         moderatedAt: FieldValue.serverTimestamp(),
@@ -53,9 +88,38 @@ class AdminDatabase {
       await locationRef.update(updateData);
       const updatedDoc = await locationRef.get();
 
+      // Log the moderation action to moderation_logs collection
+      // Prepare details object and filter out undefined values
+      const details = {
+        previousStatus: locationData?.status || 'pending',
+        newStatus: action === 'approve' ? 'approved' : 'rejected',
+        submittedBy: locationData?.submittedBy || 'Unknown User',
+        discoverySource: locationData?.discoverySource || 'manual',
+      };
+
+      // Filter out undefined values to prevent Firestore errors
+      const sanitizedDetails = Object.fromEntries(
+        Object.entries(details).filter(([_, value]) => value !== undefined)
+      );
+
+      await adminDb.collection('moderation_logs').add({
+        type: 'location_moderation',
+        locationId,
+        locationName: locationData?.name || 'Unknown Location',
+        action,
+        moderatorEmail: moderatorId,
+        moderatorName: moderatorName,
+        moderatorId: moderatorId,
+        timestamp: FieldValue.serverTimestamp(),
+        details: sanitizedDetails
+      });
+
+      console.log(`✅ Logged moderation action: ${action} for location ${locationId} by ${moderatorName} (${moderatorId})`);
+
       return this.convertFirestoreLocation(updatedDoc as FirebaseFirestore.QueryDocumentSnapshot);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error(`❌ Failed to moderate location ${locationId}:`, errorMessage);
       throw new Error(`Failed to moderate location: ${errorMessage}`);
     }
   }
@@ -382,6 +446,10 @@ class AdminDatabase {
     moderatorId?: string
   ): Promise<Review> {
     try {
+      // Get the review data before updating for logging
+      const reviewDoc = await adminDb.collection('reviews').doc(reviewId).get();
+      const reviewData = reviewDoc.data();
+      
       const updateData: any = {
         status,
         reviewedAt: FieldValue.serverTimestamp(),
@@ -393,11 +461,46 @@ class AdminDatabase {
       
       await adminDb.collection('reviews').doc(reviewId).update(updateData);
       
+      // Log the moderation action to moderation_logs collection (only for approve/reject)
+      if (status !== "pending" && moderatorId) {
+        // Get moderator name
+        const moderatorName = await this.getModeratorName(moderatorId);
+        
+        // Prepare details object and filter out undefined values
+        const details = {
+          previousStatus: reviewData?.status || 'pending',
+          newStatus: status,
+          reviewText: reviewData?.text?.substring(0, 100) || '',
+          rating: reviewData?.rating || 0,
+          submittedBy: reviewData?.user_name || reviewData?.user_email || 'Unknown User',
+        };
+
+        // Filter out undefined values to prevent Firestore errors
+        const sanitizedDetails = Object.fromEntries(
+          Object.entries(details).filter(([_, value]) => value !== undefined)
+        );
+
+        await adminDb.collection('moderation_logs').add({
+          type: 'review_moderation',
+          reviewId,
+          locationId: reviewData?.location_id || '',
+          locationName: reviewData?.location_name || 'Unknown Location',
+          action: status === "approved" ? "approve" : "reject",
+          moderatorEmail: moderatorId,
+          moderatorName: moderatorName,
+          moderatorId: moderatorId,
+          timestamp: FieldValue.serverTimestamp(),
+          details: sanitizedDetails
+        });
+
+        console.log(`✅ Logged review moderation action: ${status} for review ${reviewId} by ${moderatorName} (${moderatorId})`);
+      }
+      
       // Return the updated review
       const doc = await adminDb.collection('reviews').doc(reviewId).get();
       return this.convertFirestoreReview(doc as FirebaseFirestore.QueryDocumentSnapshot);
     } catch (error) {
-      console.error(`Error updating review ${reviewId} status to ${status}:`, error);
+      console.error(`❌ Error updating review ${reviewId} status to ${status}:`, error);
       throw error;
     }
   }
@@ -619,6 +722,96 @@ class AdminDatabase {
       // Return empty array if collection doesn't exist yet
       if (error?.code === 'not-found' || error?.message?.includes('collection')) {
         return [];
+      }
+      throw error;
+    }
+  }
+
+  // Paginated Moderation History
+  async getModerationHistoryPaginated(filters: {
+    moderatorEmail?: string;
+    days?: number;
+    limit?: number;
+    cursor?: string;
+  } = {}): Promise<{
+    data: any[];
+    hasMore: boolean;
+    nextCursor?: string;
+    totalCount: number;
+  }> {
+    try {
+      let query: FirebaseFirestore.Query = adminDb.collection('moderation_logs');
+      
+      // Apply filters
+      if (filters.moderatorEmail) {
+        query = query.where('moderatorEmail', '==', filters.moderatorEmail);
+      }
+      
+      if (filters.days) {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - filters.days);
+        query = query.where('timestamp', '>=', cutoffDate);
+      }
+      
+      query = query.orderBy('timestamp', 'desc');
+      
+      // Get total count for pagination info (create a separate query to avoid fetching all data)
+      let countQuery: FirebaseFirestore.Query = adminDb.collection('moderation_logs');
+      
+      if (filters.moderatorEmail) {
+        countQuery = countQuery.where('moderatorEmail', '==', filters.moderatorEmail);
+      }
+      
+      if (filters.days) {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - filters.days);
+        countQuery = countQuery.where('timestamp', '>=', cutoffDate);
+      }
+      
+      const countSnapshot = await countQuery.get();
+      const totalCount = countSnapshot.size;
+      
+      // Apply cursor pagination
+      if (filters.cursor) {
+        const cursorDoc = await adminDb.collection('moderation_logs').doc(filters.cursor).get();
+        if (cursorDoc.exists) {
+          query = query.startAfter(cursorDoc);
+        }
+      }
+      
+      // Apply limit + 1 to check if there are more results
+      const limit = filters.limit || 20;
+      query = query.limit(limit + 1);
+      
+      const snapshot = await query.get();
+      const docs = snapshot.docs;
+      
+      // Check if there are more results
+      const hasMore = docs.length > limit;
+      const data = docs.slice(0, limit); // Remove the extra doc used for hasMore check
+      
+      // Get next cursor from the last document
+      const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : undefined;
+      
+      return {
+        data: data.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          timestamp: this.convertTimestamp(doc.data().timestamp),
+        })),
+        hasMore,
+        nextCursor,
+        totalCount
+      };
+    } catch (error: any) {
+      console.error("Error getting paginated moderation history:", error);
+      // Return empty result if collection doesn't exist yet
+      if (error?.code === 'not-found' || error?.message?.includes('collection')) {
+        return {
+          data: [],
+          hasMore: false,
+          totalCount: 0
+        };
       }
       throw error;
     }
