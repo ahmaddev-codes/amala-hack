@@ -456,9 +456,22 @@ function AdminPageContent() {
 
         {/* Analytics Tab */}
         {activeTab === "analytics" && (
-          <Suspense fallback={<AnalyticsSkeleton />}>
-            <LazyAnalyticsDashboard />
-          </Suspense>
+          loading ? (
+            <AnalyticsSkeleton />
+          ) : (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h1 className="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
+                <div className="text-sm text-gray-500">
+                  Real-time platform analytics and insights
+                </div>
+              </div>
+
+              <Suspense fallback={<ComponentLoader message="Loading analytics dashboard..." />}>
+                <LazyAnalyticsDashboard />
+              </Suspense>
+            </div>
+          )
         )}
 
         {/* Performance Tab */}
