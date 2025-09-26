@@ -79,6 +79,8 @@ export interface Review {
   location_id: string;
   author: string;
   user_id?: string;
+  user_name?: string;
+  user_photo?: string | null;
   rating: number; // 1-5
   text?: string;
   photos?: string[];
