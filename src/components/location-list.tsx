@@ -5,6 +5,7 @@ import Image from "next/image";
 import { IoStar, IoStarHalf, IoStarOutline } from "react-icons/io5";
 import { AmalaLocation, Review } from "@/types/location";
 import { useMultipleLocationReviews } from "@/hooks/useLocationReviews";
+import { getLocationStatus, WeeklyHours } from "@/lib/utils/hours";
 
 interface LocationReview {
   id: string;
@@ -54,19 +55,32 @@ export function LocationList({
     };
   };
 
-  const getCurrentHours = (location: AmalaLocation): string | null => {
-    if (!location.hours) return null;
+  const getCurrentHours = (location: AmalaLocation): { status: string; isOpen: boolean } => {
+    if (!location.hours) {
+      return { status: "Hours not available", isOpen: false };
+    }
     
-    const today = new Date();
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const currentDay = dayNames[today.getDay()];
-    
-    const todayHours = location.hours[currentDay];
-    if (!todayHours) return null;
-    
-    if (!todayHours.isOpen) return "Closed today";
-    
-    return `${todayHours.open} - ${todayHours.close}`;
+    try {
+      // Safely convert location hours to WeeklyHours format
+      const weeklyHours: WeeklyHours = {
+        monday: location.hours.monday || { open: "09:00", close: "21:00", isOpen: false },
+        tuesday: location.hours.tuesday || { open: "09:00", close: "21:00", isOpen: false },
+        wednesday: location.hours.wednesday || { open: "09:00", close: "21:00", isOpen: false },
+        thursday: location.hours.thursday || { open: "09:00", close: "21:00", isOpen: false },
+        friday: location.hours.friday || { open: "09:00", close: "21:00", isOpen: false },
+        saturday: location.hours.saturday || { open: "09:00", close: "21:00", isOpen: false },
+        sunday: location.hours.sunday || { open: "09:00", close: "21:00", isOpen: false },
+      };
+      
+      const hoursStatus = getLocationStatus(weeklyHours);
+      return {
+        status: hoursStatus.status,
+        isOpen: hoursStatus.isOpen
+      };
+    } catch (error) {
+      console.error("Error getting location status:", error);
+      return { status: "Hours not available", isOpen: false };
+    }
   };
 
   return (
@@ -154,35 +168,16 @@ export function LocationList({
                   );
                 })()}
 
-                {/* Restaurant type and address */}
-                <div className="mb-1">
-                  <div className="flex items-center text-sm text-gray-600">
-                    <span>Restaurant</span>
-                    <span className="mx-1">·</span>
-                    <span className="truncate">{loc.address}</span>
-                  </div>
-                </div>
-
-                {/* Open/closed status */}
-                <div className="mb-2">
-                  <span>
-                    <span
-                      className={`font-normal ${
-                        loc.isOpenNow ? "text-green-700" : "text-red-600"
-                      }`}
-                    >
-                      {loc.isOpenNow ? "Open" : "Closed"}
-                    </span>
-                    {/* Only show hours if we have real data */}
-                    {(() => {
-                      const currentHours = getCurrentHours(loc);
-                      return currentHours && (
-                        <span className="font-normal text-gray-600">
-                          {" ⋅ " + currentHours}
-                        </span>
-                      );
-                    })()}
-                  </span>
+                {/* Hours status */}
+                <div className="flex items-center text-sm mb-1">
+                  {(() => {
+                    const hoursInfo = getCurrentHours(loc);
+                    return (
+                      <span className={`${hoursInfo.isOpen ? 'text-green-600' : 'text-red-600'}`}>
+                        {hoursInfo.isOpen ? '🟢' : '🔴'} {hoursInfo.status}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
 

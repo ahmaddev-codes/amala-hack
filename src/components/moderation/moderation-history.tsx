@@ -148,7 +148,7 @@ export function ModerationHistory() {
         // Map content type from the log type
         let contentType = 'unknown';
         let contentId = '';
-        
+
         if (item.type === 'location_moderation') {
           contentType = 'location';
           contentId = item.locationId || '';
@@ -163,7 +163,7 @@ export function ModerationHistory() {
           moderatorName = item.moderatorName;
         } else if (item.moderatorEmail) {
           // Extract name from email as fallback
-          const emailPrefix = item.moderatorEmail.split('@')[0];
+          const emailPrefix = item.moderatorEmail?.split('@')[0] || 'unknown';
           // Capitalize first letter and replace dots/underscores with spaces
           moderatorName = emailPrefix
             .replace(/[._]/g, ' ')
@@ -241,7 +241,7 @@ export function ModerationHistory() {
 
     // Calculate average response time from actual data
     // For now, estimate based on the frequency of actions (more frequent = faster response)
-    const averageResponseTime = historyData.length > 0 ? 
+    const averageResponseTime = historyData.length > 0 ?
       Math.max(0.5, Math.min(8, 24 / Math.max(1, historyData.length / 7))) : 2.5;
 
     // Find top moderator
@@ -251,14 +251,14 @@ export function ModerationHistory() {
     }, {} as Record<string, number>);
 
     const topModerator = Object.entries(moderatorCounts)
-      .sort(([,a], [,b]) => b - a)[0]?.[0] || '';
+      .sort(([, a], [, b]) => b - a)[0]?.[0] || '';
 
     setStats({
       totalActions: historyData.length,
       todayActions,
       approvalRate,
       averageResponseTime,
-      topModerator: topModerator.split('@')[0] || 'N/A',
+      topModerator: topModerator?.split('@')[0] || 'N/A',
     });
   };
 
@@ -285,10 +285,10 @@ export function ModerationHistory() {
       if (todayResponse.ok) {
         const todayData = await todayResponse.json();
         const todayHistoryData = todayData.data || [];
-        
+
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        
+
         // Count today's actions from the dedicated today query
         todayActions = todayHistoryData.filter((item: any) => {
           const itemDate = new Date(item.timestamp?.seconds ? item.timestamp.seconds * 1000 : item.timestamp);
@@ -299,7 +299,7 @@ export function ModerationHistory() {
         todayHistoryData.forEach((item: any) => {
           const email = item.moderatorEmail;
           const name = item.moderatorName || email?.split('@')[0] || 'Unknown';
-          
+
           if (!moderatorCounts[email]) {
             moderatorCounts[email] = { count: 0, name };
           }
@@ -308,8 +308,8 @@ export function ModerationHistory() {
 
         // Find top moderator with actual name
         const topModeratorEntry = Object.entries(moderatorCounts)
-          .sort(([,a], [,b]) => b.count - a.count)[0];
-        
+          .sort(([, a], [, b]) => b.count - a.count)[0];
+
         if (topModeratorEntry) {
           topModeratorName = topModeratorEntry[1].name;
         }
@@ -318,7 +318,7 @@ export function ModerationHistory() {
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         todayActions = currentPageData.filter(h => h.timestamp >= today).length;
-        
+
         // Use current page data for top moderator
         const pageModeratorCounts = currentPageData.reduce((acc, h) => {
           const name = h.moderatorName || h.moderatorEmail?.split('@')[0] || 'Unknown';
@@ -330,8 +330,8 @@ export function ModerationHistory() {
         }, {} as Record<string, { count: number; name: string }>);
 
         const topEntry = Object.entries(pageModeratorCounts)
-          .sort(([,a], [,b]) => b.count - a.count)[0];
-        
+          .sort(([, a], [, b]) => b.count - a.count)[0];
+
         if (topEntry) {
           topModeratorName = topEntry[1].name;
         }
@@ -343,7 +343,7 @@ export function ModerationHistory() {
       const approvalRate = totalDecisions > 0 ? (approvals / totalDecisions) * 100 : 0;
 
       // Calculate average response time from current page data
-      const averageResponseTime = currentPageData.length > 0 ? 
+      const averageResponseTime = currentPageData.length > 0 ?
         Math.max(0.5, Math.min(8, 24 / Math.max(1, currentPageData.length / 7))) : 2.5;
 
       setStats({
@@ -362,7 +362,7 @@ export function ModerationHistory() {
       const approvals = currentPageData.filter(h => h.action === 'approve').length;
       const totalDecisions = currentPageData.filter(h => ['approve', 'reject'].includes(h.action)).length;
       const approvalRate = totalDecisions > 0 ? (approvals / totalDecisions) * 100 : 0;
-      const averageResponseTime = currentPageData.length > 0 ? 
+      const averageResponseTime = currentPageData.length > 0 ?
         Math.max(0.5, Math.min(8, 24 / Math.max(1, currentPageData.length / 7))) : 2.5;
 
       setStats({
@@ -382,8 +382,8 @@ export function ModerationHistory() {
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       filtered = filtered.filter(item =>
-        item.contentName.toLowerCase().includes(searchLower) ||
-        item.moderatorEmail.toLowerCase().includes(searchLower) ||
+        item.contentName?.toLowerCase().includes(searchLower) ||
+        item.moderatorEmail?.toLowerCase().includes(searchLower) ||
         item.notes?.toLowerCase().includes(searchLower) ||
         item.reason?.toLowerCase().includes(searchLower)
       );
@@ -515,7 +515,7 @@ export function ModerationHistory() {
   };
 
   // Get unique moderators for filter
-  const uniqueModerators = [...new Set(history.map(h => h.moderatorEmail))];
+  const uniqueModerators = [...new Set(history.map(h => h.moderatorEmail).filter(email => email))];
 
   if (loading) {
     return (
@@ -636,9 +636,9 @@ export function ModerationHistory() {
                 className="border border-gray-300 rounded-md px-3 py-2 text-sm"
               >
                 <option value="">All Moderators</option>
-                {uniqueModerators.map(email => (
-                  <option key={email} value={email}>
-                    {email.split('@')[0]}
+                {uniqueModerators.map((email, index) => (
+                  <option key={email || `moderator-${index}`} value={email}>
+                    {email?.split('@')[0] || 'Unknown'}
                   </option>
                 ))}
               </select>
@@ -736,7 +736,7 @@ export function ModerationHistory() {
             <ClockIcon className="mx-auto h-12 w-12 text-gray-400" />
             <h3 className="mt-2 text-sm font-medium text-gray-900">No moderation history</h3>
             <p className="mt-1 text-sm text-gray-500">
-              {history.length === 0 
+              {history.length === 0
                 ? "No moderation actions have been performed yet."
                 : "No actions match your current filters."
               }
@@ -767,7 +767,7 @@ export function ModerationHistory() {
                     </>
                   )}
                 </div>
-                
+
                 <div className="flex items-center space-x-2">
                   <label htmlFor="pageSize" className="text-sm text-gray-700">
                     Show:
@@ -796,7 +796,7 @@ export function ModerationHistory() {
                   <ChevronLeftIcon className="h-4 w-4 mr-1" />
                   Previous
                 </button>
-                
+
                 <div className="flex items-center space-x-1">
                   <span className="text-sm text-gray-700">
                     Page {pagination.currentPage}

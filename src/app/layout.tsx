@@ -3,6 +3,7 @@ import { AuthProvider } from "@/contexts/FirebaseAuthContext";
 import { ToastProvider } from "@/contexts/ToastContext";
 import { ToastContainer } from "@/components/toast/ToastContainer";
 import { NetworkStatusBanner } from "@/components/ui/network-status";
+import { ErrorBoundary } from "@/components/error-boundary";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -78,13 +79,15 @@ export default function RootLayout({
         <link rel="apple-touch-startup-image" href="/apple-touch-icon.png" />
       </head>
       <body className="antialiased">
-        <AuthProvider>
-          <ToastProvider>
-            <NetworkStatusBanner />
-            {children}
-            <ToastContainer />
-          </ToastProvider>
-        </AuthProvider>
+        <ErrorBoundary>
+          <AuthProvider>
+            <ToastProvider>
+              <NetworkStatusBanner />
+              {children}
+              <ToastContainer />
+            </ToastProvider>
+          </AuthProvider>
+        </ErrorBoundary>
         
         {/* Service Worker Registration & Error Handling */}
         <script
