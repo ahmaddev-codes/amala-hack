@@ -16,6 +16,7 @@ import {
   getMapBounds,
 } from "@/lib/google-maps";
 import { MapClusterer } from "@/lib/map-clustering";
+import { getUserLocationWithFallback, storeUserLocation, getStoredUserLocation } from "@/lib/geolocation";
 import { ArrowPathIcon as Loader2, ExclamationCircleIcon as AlertCircle } from "@heroicons/react/24/outline";
 import { MapControls } from "./map-controls";
 import { MapSkeleton } from "@/components/skeletons";
@@ -99,14 +100,69 @@ export function MapContainer({
         throw new Error("Google Maps API failed to initialize properly");
       }
 
-      // Default to global view
-      const defaultCenter = { lat: 20, lng: 0 };
+      // Check if user just logged in and wants location-based map
+      const shouldUseUserLocation = sessionStorage.getItem('useUserLocationOnMap') === 'true';
+      let defaultCenter = { lat: 20, lng: 0 }; // Global view fallback
+      let defaultZoom = 2;
+
+      if (shouldUseUserLocation) {
+        // Clear the flag so it only happens once per login
+        sessionStorage.removeItem('useUserLocationOnMap');
+        
+        // Try to get stored location first (faster)
+        const storedLocation = getStoredUserLocation();
+        if (storedLocation) {
+          defaultCenter = storedLocation;
+          defaultZoom = 12;
+          console.log("📍 Using stored user location from login:", defaultCenter);
+        } else {
+          // Fallback to getting fresh location
+          const { location: userLocation, fromGeolocation } = await getUserLocationWithFallback(
+            { lat: 20, lng: 0 },
+            { 
+              timeout: 5000, 
+              enableHighAccuracy: false,
+              maximumAge: 300000
+            }
+          );
+          
+          defaultCenter = userLocation;
+          defaultZoom = fromGeolocation ? 12 : 2;
+          
+          if (fromGeolocation) {
+            storeUserLocation(userLocation);
+            console.log("📍 Using fresh user location:", defaultCenter);
+          } else {
+            console.log("📍 Using global view as fallback");
+          }
+        }
+      } else {
+        // Regular map load - try to get location but don't force it
+        const { location: userLocation, fromGeolocation } = await getUserLocationWithFallback(
+          { lat: 20, lng: 0 },
+          { 
+            timeout: 3000, // Shorter timeout for regular loads
+            enableHighAccuracy: false,
+            maximumAge: 600000 // 10 minutes cache for regular loads
+          }
+        );
+        
+        defaultCenter = userLocation;
+        defaultZoom = fromGeolocation ? 12 : 2;
+        
+        if (fromGeolocation) {
+          storeUserLocation(userLocation);
+          console.log("📍 Using user location for regular map load:", defaultCenter);
+        } else {
+          console.log("📍 Using global view for regular map load");
+        }
+      }
 
       console.log("🗺️ Initializing map instance...");
 
       const mapInstance = new window.google.maps.Map(mapRef.current, {
         center: defaultCenter,
-        zoom: 2,
+        zoom: defaultZoom,
         styles: amalaMapStyles,
         mapTypeControl: false,
         streetViewControl: false,

@@ -235,19 +235,6 @@ export default function Home() {
 
       await Promise.all(submissionPromises);
 
-      // Refresh locations using merge approach
-      const locationsFromDb = await firebaseOperations.getAllLocations({});
-      const approvedLocations = locationsFromDb.filter(
-        (loc) => loc.status === "approved"
-      );
-
-      // Merge new locations instead of replacing
-      setAllLocations(prevLocations => {
-        const existingIds = new Set(prevLocations.map(loc => loc.id));
-        const newLocations = approvedLocations.filter(loc => !existingIds.has(loc.id));
-        return [...prevLocations, ...newLocations];
-      });
-
       setShowIntakeDialog(false);
 
       // Show single success message
@@ -255,6 +242,23 @@ export default function Home() {
         `${locations.length} location${locations.length > 1 ? 's' : ''} submitted successfully! They will be reviewed by moderators before appearing on the map.`,
         "Submission Successful"
       );
+
+      // Refresh locations using merge approach (non-critical operation)
+      try {
+        const locationsFromDb = await firebaseOperations.getAllLocations({});
+        const approvedLocations = locationsFromDb.filter(
+          (loc) => loc.status === "approved"
+        );
+
+        // Merge new locations instead of replacing
+        setAllLocations(prevLocations => {
+          const existingIds = new Set(prevLocations.map(loc => loc.id));
+          const newLocations = approvedLocations.filter(loc => !existingIds.has(loc.id));
+          return [...prevLocations, ...newLocations];
+        });
+      } catch (refreshError) {
+        console.warn("Failed to refresh locations after submission (non-critical):", refreshError);
+      }
     } catch (err) {
       console.error("Error submitting locations:", err);
       error("Error submitting location. Please try again.", "Submission Failed");
