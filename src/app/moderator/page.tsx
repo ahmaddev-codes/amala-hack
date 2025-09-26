@@ -3,13 +3,16 @@
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useAuth } from "@/contexts/FirebaseAuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { AmalaLocation, Review } from "@/types/location";
-import DiscoveryPanel from "@/components/discovery/discovery-panel";
 import { FlaggedContentPanel } from "@/components/moderation/flagged-content-panel";
 import { ModerationHistory } from "@/components/moderation/moderation-history";
 import { ModerationDashboard } from "@/components/moderation/moderation-dashboard";
+
+// Lazy load discovery panel for better performance
+const LazyDiscoveryPanel = lazy(() => import("@/components/discovery/discovery-panel"));
 import { memoryCache, CacheKeys } from "@/lib/cache/memory-cache";
+import { ComponentLoader } from "@/components/ui/loading-spinner";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useOptimisticListMutation } from "@/hooks/useOptimisticMutation";
 import { 
@@ -52,6 +55,11 @@ function ModeratorDashboard() {
   const [flaggedContent, setFlaggedContent] = useState<any[]>([]);
   const [moderationHistory, setModerationHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  // Bulk selection states
+  const [selectedReviews, setSelectedReviews] = useState<Set<string>>(new Set());
+  const [selectedLocations, setSelectedLocations] = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const [stats, setStats] = useState({
     pendingReviews: 0,
     pendingLocations: 0,
@@ -67,20 +75,20 @@ function ModeratorDashboard() {
       operation: 'remove',
       mutationFn: async ({ reviewId, action }: { reviewId: string, action: 'approve' | 'reject' }) => {
         const idToken = await getIdToken();
-        const response = await fetch('/api/moderation', {
-          method: 'POST',
+        const response = await fetch('/api/reviews', {
+          method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${idToken}`
           },
           body: JSON.stringify({ reviewId, action })
         });
-        
+
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.error || `Failed to ${action} review`);
         }
-        
+
         return response.json();
       },
       successMessage: "Review moderated successfully!",
@@ -110,12 +118,12 @@ function ModeratorDashboard() {
           },
           body: JSON.stringify({ locationId, action })
         });
-        
+
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.error || `Failed to ${action} location`);
         }
-        
+
         return response.json();
       },
       successMessage: "Location moderated successfully!",
@@ -235,6 +243,124 @@ function ModeratorDashboard() {
     fetchPendingData();
   }, []);
 
+  // Bulk selection handlers
+  const handleSelectAllReviews = (checked: boolean) => {
+    if (checked) {
+      setSelectedReviews(new Set(pendingReviews.map(r => r.id)));
+    } else {
+      setSelectedReviews(new Set());
+    }
+  };
+
+  const handleSelectAllLocations = (checked: boolean) => {
+    if (checked) {
+      setSelectedLocations(new Set(pendingLocations.map(l => l.id)));
+    } else {
+      setSelectedLocations(new Set());
+    }
+  };
+
+  const handleSelectReview = (reviewId: string, checked: boolean) => {
+    const newSelected = new Set(selectedReviews);
+    if (checked) {
+      newSelected.add(reviewId);
+    } else {
+      newSelected.delete(reviewId);
+    }
+    setSelectedReviews(newSelected);
+  };
+
+  const handleSelectLocation = (locationId: string, checked: boolean) => {
+    const newSelected = new Set(selectedLocations);
+    if (checked) {
+      newSelected.add(locationId);
+    } else {
+      newSelected.delete(locationId);
+    }
+    setSelectedLocations(newSelected);
+  };
+
+  // Bulk actions
+  const handleBulkReviewAction = async (action: 'approve' | 'reject') => {
+    if (selectedReviews.size === 0) return;
+    
+    setBulkActionLoading(true);
+    try {
+      const idToken = await getIdToken();
+      const promises = Array.from(selectedReviews).map(reviewId => 
+        fetch('/api/reviews', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          body: JSON.stringify({ reviewId, action })
+        })
+      );
+      
+      const results = await Promise.allSettled(promises);
+      const successCount = results.filter(r => r.status === 'fulfilled').length;
+      
+      // Remove processed reviews from the list
+      setPendingReviews(prev => prev.filter(r => !selectedReviews.has(r.id)));
+      setSelectedReviews(new Set());
+      
+      // Update stats
+      setStats(prev => ({
+        ...prev,
+        pendingReviews: Math.max(0, prev.pendingReviews - successCount),
+        todayActions: prev.todayActions + successCount
+      }));
+      
+      success(`${action === 'approve' ? 'Approved' : 'Rejected'} ${successCount} reviews successfully!`, 'Bulk Action Complete');
+    } catch (error) {
+      console.error('Bulk review action error:', error);
+      showError('Failed to process bulk action', 'Error');
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkLocationAction = async (action: 'approve' | 'reject') => {
+    if (selectedLocations.size === 0) return;
+    
+    setBulkActionLoading(true);
+    try {
+      const idToken = await getIdToken();
+      const promises = Array.from(selectedLocations).map(locationId => 
+        fetch('/api/moderation', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`
+          },
+          body: JSON.stringify({ locationId, action })
+        })
+      );
+      
+      const results = await Promise.allSettled(promises);
+      const successCount = results.filter(r => r.status === 'fulfilled').length;
+      
+      // Remove processed locations from the list
+      setPendingLocations(prev => prev.filter(l => !selectedLocations.has(l.id)));
+      setSelectedLocations(new Set());
+      
+      // Update stats
+      setStats(prev => ({
+        ...prev,
+        pendingLocations: Math.max(0, prev.pendingLocations - successCount),
+        todayActions: prev.todayActions + successCount
+      }));
+      
+      success(`${action === 'approve' ? 'Approved' : 'Rejected'} ${successCount} locations successfully!`, 'Bulk Action Complete');
+    } catch (error) {
+      console.error('Bulk location action error:', error);
+      showError('Failed to process bulk action', 'Error');
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
   // Track page view on component mount
   useEffect(() => {
     analytics.trackPageView('Moderator Dashboard', 'Content Moderation');
@@ -272,7 +398,7 @@ function ModeratorDashboard() {
       <div className="p-8">
           {/* Tab Content */}
           {activeTab === "overview" && (
-            <ModerationDashboard />
+            <ModerationDashboard stats={stats} loading={loading} />
           )}
 
           {/* Pending Content Tab */}
@@ -307,51 +433,81 @@ function ModeratorDashboard() {
                   {/* Pending Reviews */}
                   {pendingReviews.length > 0 && (
                     <div className="bg-white rounded-lg shadow p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <DocumentTextIcon className="w-6 h-6 text-gray-600" />
-                        <h2 className="text-xl font-semibold">Pending Reviews ({pendingReviews.length})</h2>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <DocumentTextIcon className="w-6 h-6 text-gray-600" />
+                          <h2 className="text-xl font-semibold">Pending Reviews ({pendingReviews.length})</h2>
+                        </div>
+                        
+                        {/* Bulk Actions */}
+                        {selectedReviews.size > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-600">{selectedReviews.size} selected</span>
+                            <button
+                              onClick={() => handleBulkReviewAction('approve')}
+                              disabled={bulkActionLoading}
+                              className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-1 rounded text-sm transition-colors flex items-center gap-1"
+                            >
+                              <CheckIcon className="w-4 h-4" />
+                              Approve All
+                            </button>
+                            <button
+                              onClick={() => handleBulkReviewAction('reject')}
+                              disabled={bulkActionLoading}
+                              className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-3 py-1 rounded text-sm transition-colors flex items-center gap-1"
+                            >
+                              <XMarkIcon className="w-4 h-4" />
+                              Reject All
+                            </button>
+                          </div>
+                        )}
                       </div>
+                      
+                      {/* Select All Checkbox */}
+                      <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-200">
+                        <input
+                          type="checkbox"
+                          id="select-all-reviews"
+                          checked={selectedReviews.size === pendingReviews.length && pendingReviews.length > 0}
+                          onChange={(e) => handleSelectAllReviews(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <label htmlFor="select-all-reviews" className="text-sm font-medium text-gray-700">
+                          Select all reviews
+                        </label>
+                      </div>
+                      
                       <div className="space-y-4">
                         {pendingReviews.map((review) => (
                           <div key={review.id} className="border rounded-lg p-4">
                             <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <div className="flex items-center">
-                                    {[1, 2, 3, 4, 5].map((star) => (
-                                      <StarIcon key={star} className={`w-4 h-4 ${
-                                        star <= review.rating ? 'text-yellow-500 fill-current' : 'text-gray-300'
-                                      }`} />
-                                    ))}
+                              <div className="flex items-start gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedReviews.has(review.id)}
+                                  onChange={(e) => handleSelectReview(review.id, e.target.checked)}
+                                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-1"
+                                />
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <div className="flex items-center">
+                                      {[1, 2, 3, 4, 5].map((star) => (
+                                        <StarIcon key={star} className={`w-4 h-4 ${
+                                          star <= review.rating ? 'text-yellow-500 fill-current' : 'text-gray-300'
+                                        }`} />
+                                      ))}
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-700">
+                                      by {review.author}
+                                    </span>
                                   </div>
-                                  <span className="text-sm font-medium text-gray-700">
-                                    by {review.author}
-                                  </span>
+                                  {review.text && (
+                                    <p className="text-gray-700 mb-2">{review.text}</p>
+                                  )}
+                                  <p className="text-xs text-gray-500">
+                                    Location: {review.location_id}
+                                  </p>
                                 </div>
-                                {review.text && (
-                                  <p className="text-gray-700 mb-2">{review.text}</p>
-                                )}
-                                <p className="text-xs text-gray-500">
-                                  Location: {review.location_id}
-                                </p>
-                              </div>
-                              <div className="flex gap-2 ml-4">
-                                <button
-                                  onClick={() => reviewMutation.mutate({ reviewId: review.id, action: 'approve' })}
-                                  disabled={reviewMutation.isLoading}
-                                  className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-1 rounded text-sm transition-colors"
-                                >
-                                  <CheckIcon className="w-4 h-4 inline mr-1" />
-                                  {reviewMutation.isLoading ? 'Approving...' : 'Approve'}
-                                </button>
-                                <button
-                                  onClick={() => reviewMutation.mutate({ reviewId: review.id, action: 'reject' })}
-                                  disabled={reviewMutation.isLoading}
-                                  className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-3 py-1 rounded text-sm transition-colors"
-                                >
-                                  <XMarkIcon className="w-4 h-4 inline mr-1" />
-                                  {reviewMutation.isLoading ? 'Rejecting...' : 'Reject'}
-                                </button>
                               </div>
                             </div>
                           </div>
@@ -363,92 +519,76 @@ function ModeratorDashboard() {
                   {/* Pending Locations */}
                   {pendingLocations.length > 0 && (
                     <div className="bg-white rounded-lg shadow p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <EyeIcon className="w-6 h-6 text-gray-600" />
-                        <h2 className="text-xl font-semibold">Pending Locations ({pendingLocations.length})</h2>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <EyeIcon className="w-6 h-6 text-gray-600" />
+                          <h2 className="text-xl font-semibold">Pending Locations ({pendingLocations.length})</h2>
+                        </div>
+                        
+                        {/* Bulk Actions */}
+                        {selectedLocations.size > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm text-gray-600">{selectedLocations.size} selected</span>
+                            <button
+                              onClick={() => handleBulkLocationAction('approve')}
+                              disabled={bulkActionLoading}
+                              className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-1 rounded text-sm transition-colors flex items-center gap-1"
+                            >
+                              <CheckIcon className="w-4 h-4" />
+                              Approve All
+                            </button>
+                            <button
+                              onClick={() => handleBulkLocationAction('reject')}
+                              disabled={bulkActionLoading}
+                              className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-3 py-1 rounded text-sm transition-colors flex items-center gap-1"
+                            >
+                              <XMarkIcon className="w-4 h-4" />
+                              Reject All
+                            </button>
+                          </div>
+                        )}
                       </div>
+                      
+                      {/* Select All Checkbox */}
+                      <div className="flex items-center gap-2 mb-4 pb-2 border-b border-gray-200">
+                        <input
+                          type="checkbox"
+                          id="select-all-locations"
+                          checked={selectedLocations.size === pendingLocations.length && pendingLocations.length > 0}
+                          onChange={(e) => handleSelectAllLocations(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        />
+                        <label htmlFor="select-all-locations" className="text-sm font-medium text-gray-700">
+                          Select all locations
+                        </label>
+                      </div>
+                      
                       <div className="space-y-4">
                         {pendingLocations.map((location) => (
                           <div key={location.id} className="border rounded-lg p-4">
                             <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <h3 className="font-bold text-lg mb-2">{location.name}</h3>
-                                <p className="text-gray-600 mb-2">{location.address}</p>
-                                {location.description && (
-                                  <p className="text-gray-700 mb-2">{location.description}</p>
-                                )}
-                                <div className="flex gap-2 text-xs">
-                                  <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded">
-                                    {location.discoverySource}
-                                  </span>
-                                  <span className="bg-green-100 text-green-700 px-2 py-1 rounded">
-                                    {location.serviceType}
-                                  </span>
+                              <div className="flex items-start gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedLocations.has(location.id)}
+                                  onChange={(e) => handleSelectLocation(location.id, e.target.checked)}
+                                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-1"
+                                />
+                                <div className="flex-1">
+                                  <h3 className="font-bold text-lg mb-2">{location.name}</h3>
+                                  <p className="text-gray-600 mb-2">{location.address}</p>
+                                  {location.description && (
+                                    <p className="text-gray-700 mb-2">{location.description}</p>
+                                  )}
+                                  <div className="flex gap-2 text-xs">
+                                    <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded">
+                                      {location.discoverySource}
+                                    </span>
+                                    <span className="bg-green-100 text-green-700 px-2 py-1 rounded">
+                                      {location.serviceType}
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
-                              <div className="flex gap-2 ml-4">
-                                <button
-                                  onClick={async () => {
-                                    try {
-                                      const idToken = await getIdToken();
-                                      const response = await fetch('/api/moderation', {
-                                        method: 'POST',
-                                        headers: {
-                                          'Content-Type': 'application/json',
-                                          'Authorization': `Bearer ${idToken}`
-                                        },
-                                        body: JSON.stringify({
-                                          action: 'approve',
-                                          locationId: location.id
-                                        })
-                                      });
-                                      if (response.ok) {
-                                        fetchPendingData(true);
-                                      } else {
-                                        const errorData = await response.json();
-                                        throw new Error(errorData.error || 'Failed to approve location');
-                                      }
-                                    } catch (error: any) {
-                                      console.error('Location approval error:', error);
-                                      showError(error.message, 'Approval Failed');
-                                    }
-                                  }}
-                                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm"
-                                >
-                                  <CheckIcon className="w-4 h-4 inline mr-1" />
-                                  Approve
-                                </button>
-                                <button
-                                  onClick={async () => {
-                                    try {
-                                      const idToken = await getIdToken();
-                                      const response = await fetch('/api/moderation', {
-                                        method: 'POST',
-                                        headers: {
-                                          'Content-Type': 'application/json',
-                                          'Authorization': `Bearer ${idToken}`
-                                        },
-                                        body: JSON.stringify({
-                                          action: 'reject',
-                                          locationId: location.id
-                                        })
-                                      });
-                                      if (response.ok) {
-                                        fetchPendingData(true);
-                                      } else {
-                                        const errorData = await response.json();
-                                        throw new Error(errorData.error || 'Failed to reject location');
-                                      }
-                                    } catch (error: any) {
-                                      console.error('Location rejection error:', error);
-                                      showError(error.message, 'Rejection Failed');
-                                    }
-                                  }}
-                                  className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
-                                >
-                                  <XMarkIcon className="w-4 h-4 inline mr-1" />
-                                  Reject
-                                </button>
                               </div>
                             </div>
                           </div>
@@ -482,12 +622,14 @@ function ModeratorDashboard() {
               </div>
 
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-blue-200">
-                <DiscoveryPanel 
-                  onDiscoveryComplete={(result) => {
-                    success(`Discovery completed! Found ${result.totalDiscovered} locations, saved ${result.savedToDatabase} new ones.`, 'Discovery Complete');
-                    fetchPendingData(true);
-                  }}
-                />
+                <Suspense fallback={<ComponentLoader message="Loading discovery panel..." />}>
+                  <LazyDiscoveryPanel 
+                    onDiscoveryComplete={(result) => {
+                      success(`Discovery completed! Found ${result.totalDiscovered} locations, saved ${result.savedToDatabase} new ones.`, 'Discovery Complete');
+                      fetchPendingData(true);
+                    }}
+                  />
+                </Suspense>
               </div>
             </div>
           )}
