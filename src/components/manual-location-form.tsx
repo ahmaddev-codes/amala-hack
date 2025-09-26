@@ -38,6 +38,7 @@ const locationSchema = z.object({
   priceRange: z.enum(["$", "$$", "$$$", "$$$$"]).optional(),
   category: z.string().min(1, "Category is required"),
   cuisine: z.array(z.string()).min(1, "At least one cuisine type is required"),
+  serviceType: z.enum(["dine-in", "takeaway", "both"]),
   coordinates: z.object({
     lat: z.number().min(-90).max(90),
     lng: z.number().min(-180).max(180),
@@ -68,6 +69,7 @@ export function ManualLocationForm({ onSubmit, onCancel }: ManualLocationFormPro
     defaultValues: {
       category: "restaurant",
       cuisine: ["Nigerian"],
+      serviceType: "both" as const,
       coordinates: { lat: 6.5244, lng: 3.3792 }, // Default to Lagos
     },
   });
@@ -169,6 +171,9 @@ export function ManualLocationForm({ onSubmit, onCancel }: ManualLocationFormPro
       photos: [],
       source: 'manual',
       confidence: 1.0, // Manual entries are 100% confident
+      cuisine: data.cuisine, // Include cuisine data
+      category: data.category, // Include category data
+      serviceType: data.serviceType, // Include service type
     };
 
     await onSubmit(locationResult);
@@ -215,6 +220,23 @@ export function ManualLocationForm({ onSubmit, onCancel }: ManualLocationFormPro
                 </Select>
                 {errors.category && (
                   <p className="text-red-500 text-sm mt-1">{errors.category.message}</p>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="serviceType">Service Type *</Label>
+                <Select onValueChange={(value) => setValue("serviceType", value as any)} defaultValue="both">
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dine-in">Dine-in Only</SelectItem>
+                    <SelectItem value="takeaway">Takeaway Only</SelectItem>
+                    <SelectItem value="both">Both Dine-in & Takeaway</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.serviceType && (
+                  <p className="text-red-500 text-sm mt-1">{errors.serviceType.message}</p>
                 )}
               </div>
             </div>
