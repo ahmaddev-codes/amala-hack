@@ -24,12 +24,14 @@ import { ReviewSubmission } from "./review-submission";
 import Image from "next/image";
 import { trackEvent } from "@/lib/utils";
 import { TabContentLoader } from "@/components/ui/loading-spinner";
+import { useLocationReviews } from "@/hooks/useLocationReviews";
 
 interface MobileBottomSheetProps {
   locations: AmalaLocation[];
   selectedLocation: AmalaLocation | null;
   onLocationSelect: (location: AmalaLocation) => void;
   onClose?: () => void;
+  isSearchActive?: boolean;
 }
 
 type SheetState = "collapsed" | "peek" | "expanded";
@@ -39,6 +41,7 @@ export function MobileBottomSheet({
   selectedLocation,
   onLocationSelect,
   onClose,
+  isSearchActive = false,
 }: MobileBottomSheetProps) {
   const { user } = useAuth();
   const { info } = useToast();
@@ -46,11 +49,14 @@ export function MobileBottomSheet({
   const [isDragging, setIsDragging] = useState(false);
   const [startY, setStartY] = useState(0);
   const [currentY, setCurrentY] = useState(0);
+  
+  // Get real review data for selected location
+  const { reviews, reviewCount, averageRating, loading: reviewsLoading } = useLocationReviews(
+    selectedLocation?.id || ""
+  );
   const [windowHeight, setWindowHeight] = useState(600); // Default height
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "reviews" | "photos">("overview");
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [reviewsLoading, setReviewsLoading] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
 
   // Set window height on client side
@@ -169,37 +175,21 @@ export function MobileBottomSheet({
     }
   }, [isDragging, currentY, startY]);
 
-  // Fetch reviews for selected location
-  const fetchReviews = async () => {
-    if (!selectedLocation?.id) return;
-    
-    setReviewsLoading(true);
-    try {
-      const response = await fetch(`/api/locations/${selectedLocation.id}/reviews`);
-      if (response.ok) {
-        const data = await response.json();
-        setReviews(data.reviews || []);
-      }
-    } catch (error) {
-      console.error('Error fetching reviews:', error);
-    } finally {
-      setReviewsLoading(false);
-    }
-  };
 
-  // Auto-expand when location is selected
+  // Auto-expand when location is selected and reset when search is cleared
   useEffect(() => {
     if (selectedLocation && sheetState === "collapsed") {
       setSheetState("peek");
     }
   }, [selectedLocation]);
 
-  // Fetch reviews when location changes
+  // Reset to show all locations when search is cleared
   useEffect(() => {
-    if (selectedLocation) {
-      fetchReviews();
+    if (!isSearchActive && !selectedLocation && sheetState === "collapsed") {
+      setSheetState("peek");
     }
-  }, [selectedLocation]);
+  }, [isSearchActive, selectedLocation, sheetState]);
+
 
   // Handle action buttons
   const handleDirections = () => {
@@ -475,25 +465,33 @@ export function MobileBottomSheet({
                         {selectedLocation.name}
                       </h3>
 
-                      {selectedLocation.rating && (
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className="flex items-center">
-                            {[...Array(5)].map((_, i) => (
+                      {/* Always show rating section with real data */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center">
+                          {[...Array(5)].map((_, i) => {
+                            const filled = i < Math.floor(averageRating);
+                            const halfFilled = i === Math.floor(averageRating) && averageRating % 1 >= 0.5;
+                            return (
                               <Star
                                 key={i}
-                                className={`w-5 h-5 ${
-                                  i < Math.floor(selectedLocation.rating!)
+                                className={`w-4 h-4 ${
+                                  filled
                                     ? "fill-yellow-400 text-yellow-400"
+                                    : halfFilled
+                                    ? "fill-yellow-200 text-yellow-400"
                                     : "text-gray-300"
                                 }`}
                               />
-                            ))}
-                          </div>
-                          <span className="text-sm text-gray-600">
-                            {selectedLocation.rating} ({selectedLocation.reviewCount || 0} reviews)
-                          </span>
+                            );
+                          })}
                         </div>
-                      )}
+                        <span className="text-sm text-gray-600">
+                          {averageRating > 0 ? averageRating.toFixed(1) : "0.0"} ({reviewCount} reviews)
+                        </span>
+                        {reviewsLoading && (
+                          <span className="text-xs text-gray-400 ml-1">Loading...</span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Price and Service Type */}
@@ -604,8 +602,8 @@ export function MobileBottomSheet({
                         ) : reviews.length > 0 ? (
                           <div className="space-y-4">
                             {reviews.slice(0, 3).map((review: Review, index: number) => (
-                              <div key={index} className="bg-gray-50 p-4 rounded-lg">
-                                <div className="flex items-center gap-2 mb-2">
+                              <div key={index} className="border rounded-lg p-4 bg-white">
+                                <div className="flex items-center gap-2 mb-3">
                                   <div className="flex items-center">
                                     {[...Array(5)].map((_, i) => (
                                       <Star
@@ -618,9 +616,31 @@ export function MobileBottomSheet({
                                       />
                                     ))}
                                   </div>
-                                  <span className="text-sm text-gray-600 font-medium">{review.author || 'Anonymous'}</span>
+                                  <span className="text-sm font-medium text-gray-700">{review.author || 'Anonymous'}</span>
+                                  <span className="text-xs text-gray-500">•</span>
+                                  <span className="text-xs text-gray-500">
+                                    {new Date(review.date_posted).toLocaleDateString()}
+                                  </span>
                                 </div>
-                                <p className="text-sm text-gray-700 leading-relaxed">{review.text}</p>
+                                {review.text && (
+                                  <p className="text-sm text-gray-700 leading-relaxed mb-3">{review.text}</p>
+                                )}
+                                {review.photos && review.photos.length > 0 && (
+                                  <div className="flex gap-2 mt-3">
+                                    {review.photos.slice(0, 3).map((photo: string, imgIndex: number) => (
+                                      <div key={imgIndex} className="w-16 h-16 rounded-lg overflow-hidden">
+                                        <Image
+                                          src={photo}
+                                          alt={`Review photo ${imgIndex + 1}`}
+                                          width={64}
+                                          height={64}
+                                          className="w-full h-full object-cover"
+                                          unoptimized
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             ))}
                             {reviews.length > 3 && (
@@ -631,8 +651,11 @@ export function MobileBottomSheet({
                           </div>
                         ) : (
                           <div className="text-center py-8 text-gray-500">
-                            <p>No reviews yet</p>
-                            <p className="text-sm mt-1">Be the first to write a review!</p>
+                            <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                              <Star className="w-8 h-8 text-gray-400" />
+                            </div>
+                            <h4 className="text-lg font-medium text-gray-900 mb-2">No reviews yet</h4>
+                            <p className="text-sm">Be the first to write a review!</p>
                           </div>
                         )}
                       </div>
@@ -641,23 +664,24 @@ export function MobileBottomSheet({
                     {activeTab === "photos" && (
                       <div className="space-y-4">
                         {selectedLocation.images && selectedLocation.images.length > 0 ? (
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-2 gap-3">
                             {selectedLocation.images.map((image: string, index: number) => (
                               <div
                                 key={index}
-                                className="aspect-square relative rounded-lg overflow-hidden"
+                                className="aspect-square relative rounded-xl overflow-hidden bg-gray-100 border border-gray-200"
                               >
                                 <Image
                                   src={image}
                                   alt={`Photo ${index + 1}`}
                                   fill
-                                  className="object-cover"
+                                  className="object-cover hover:scale-105 transition-transform duration-200"
                                   unoptimized
                                   onError={(e) => {
                                     console.log("Photo failed to load:", e.currentTarget.src);
                                     e.currentTarget.src = "/placeholder-image.svg";
                                   }}
                                 />
+                                <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-10 transition-all duration-200" />
                               </div>
                             ))}
                           </div>
@@ -668,6 +692,14 @@ export function MobileBottomSheet({
                             </div>
                             <h4 className="text-lg font-medium text-gray-900 mb-2">No photos yet</h4>
                             <p className="text-gray-500 mb-4">Be the first to share photos of this place!</p>
+                            {user && (
+                              <button
+                                onClick={() => setShowReviewForm(true)}
+                                className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                              >
+                                Add Photos
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -762,6 +794,30 @@ export function MobileBottomSheet({
                       }}
                     >
                       <div className="flex justify-between items-start gap-3">
+                        {/* Location Image */}
+                        <div className="flex-shrink-0">
+                          {location.images && location.images.length > 0 ? (
+                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-100">
+                              <Image
+                                src={location.images[0]}
+                                alt={location.name}
+                                width={64}
+                                height={64}
+                                className="w-full h-full object-cover"
+                                unoptimized
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                }}
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center">
+                              <Camera className="w-6 h-6 text-white opacity-60" />
+                            </div>
+                          )}
+                        </div>
+                        
                         <div className="flex-1 min-w-0">
                           <div className="flex items-start justify-between mb-2">
                             <h4 className="font-semibold text-gray-900 text-sm truncate">
@@ -840,14 +896,13 @@ export function MobileBottomSheet({
 
       {/* Review Form Modal */}
       {showReviewForm && selectedLocation && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 sm:p-6 z-[60]">
+        <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 sm:p-6 z-[60]">
           <ReviewSubmission
             location={selectedLocation}
             onSubmitted={() => {
               setShowReviewForm(false);
               info("Review submitted successfully!", "Thank you!");
-              // Refresh reviews list
-              fetchReviews();
+              // The useLocationReviews hook will automatically refresh the data
             }}
             onCancel={() => setShowReviewForm(false)}
           />
