@@ -21,8 +21,8 @@ async function fetchTimelineData(userEmail?: string) {
       const timeSeriesData = await response.json();
       return timeSeriesData.map((item: any) => ({
         date: new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        submissions: item.newUsers || 0, // Use new users as proxy for submissions
-        approved: Math.floor((item.newUsers || 0) * 0.7) // Estimate approval rate
+        submissions: item.submissions || item.newUsers || 0, // Use actual submissions if available
+        approved: item.approved || Math.floor((item.submissions || item.newUsers || 0) * 0.7) // Use actual approved data if available
       }));
     }
   } catch (error) {
