@@ -7,7 +7,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const moderatorEmail = searchParams.get("moderator") || undefined;
     const days = parseInt(searchParams.get("days") || "30");
-    const limit = parseInt(searchParams.get("limit") || "50");
+    const limit = parseInt(searchParams.get("limit") || "20"); // Reduced default for pagination
+    const page = parseInt(searchParams.get("page") || "1");
+    const cursor = searchParams.get("cursor") || undefined; // For cursor-based pagination
     
     // Verify authentication and role
     const authResult = await verifyBearerToken(request.headers.get("authorization") || undefined);
@@ -20,16 +22,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: roleCheck.error }, { status: 403 });
     }
 
-    const history = await adminFirebaseOperations.getModerationHistory({
+    const result = await adminFirebaseOperations.getModerationHistoryPaginated({
       moderatorEmail,
       days,
-      limit
+      limit,
+      cursor
     });
     
     return NextResponse.json({
       success: true,
-      data: history,
-      count: history.length
+      data: result.data,
+      pagination: {
+        currentPage: page,
+        limit,
+        hasMore: result.hasMore,
+        nextCursor: result.nextCursor,
+        totalCount: result.totalCount
+      }
     });
   } catch (error: any) {
     console.error("❌ Error fetching moderation history:", error);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminFirebaseOperations } from "@/lib/firebase/admin-database";
 import { requireRole, verifyBearerToken } from "@/lib/auth";
 import { queryBatcher } from "@/lib/database/query-batcher";
+import { logAnalyticsEvent } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -74,35 +75,16 @@ export async function POST(request: NextRequest) {
 
     // Log analytics with scout tracking
     try {
-      await fetch("/api/analytics", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          event_type: action === "approve" ? "mod_approve" : "mod_reject", 
-          location_id: locationId, 
-          metadata: { 
-            moderator: moderatorId || authResult.user!.email || authResult.user!.id,
-            submittedBy: moderatedLocation.submittedBy, // Track original submitter for scout stats
-            action: action
-          } 
-        }),
-      });
-
+      await logAnalyticsEvent(
+        action === "approve" ? "mod_approve" : "mod_reject",
+        `location_id:${locationId},moderator:${moderatorId || authResult.user!.email || authResult.user!.id},action:${action}`
+      );
       // Additional scout-specific analytics if location was user-submitted
       if (moderatedLocation.submittedBy && moderatedLocation.discoverySource === "user-submitted") {
-        await fetch("/api/analytics", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            event_type: action === "approve" ? "scout_submission_approved" : "scout_submission_rejected", 
-            location_id: locationId, 
-            metadata: { 
-              scout: moderatedLocation.submittedBy,
-              locationName: moderatedLocation.name,
-              moderator: moderatorId || authResult.user!.email || authResult.user!.id
-            } 
-          }),
-        });
+        await logAnalyticsEvent(
+          action === "approve" ? "scout_submission_approved" : "scout_submission_rejected",
+          `location_id:${locationId},scout:${moderatedLocation.submittedBy},moderator:${moderatorId || authResult.user!.email || authResult.user!.id}`
+        );
       }
     } catch (error) {
       console.error("Failed to log analytics:", error);
