@@ -47,16 +47,19 @@ export const LocationSubmissionSchema = z.object({
         .transform((val) => val.trim().replace(/\s+/g, " ")), // Normalize whitespace
     coordinates: CoordinateSchema.optional(),
     phone: z.string()
-        .regex(/^[\+]?[1-9][\d]{0,15}$/, "Invalid phone number format")
+        .regex(/^[\+]?[\d\s\-\(\)]{7,20}$/, "Invalid phone number format")
         .optional()
+        .or(z.literal(""))
         .transform((val) => val?.replace(/\s+/g, "")), // Remove spaces
     website: z.string()
         .url("Invalid website URL")
         .optional()
+        .or(z.literal(""))
         .transform((val) => val?.toLowerCase()),
     email: z.string()
         .email("Invalid email format")
         .optional()
+        .or(z.literal(""))
         .transform((val) => val?.toLowerCase()),
     description: z.string()
         .max(500, "Description must be less than 500 characters")

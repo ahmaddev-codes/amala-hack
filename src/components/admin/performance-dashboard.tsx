@@ -14,8 +14,9 @@ import {
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon 
 } from '@heroicons/react/24/outline';
-import { memoryCache, ResponseTimeTracker, ApiCallTracker, MemoryTracker } from '@/lib/cache/memory-cache';
+import { MemoryTracker } from '@/lib/cache/memory-cache';
 import { CachePerformanceMonitor } from '@/lib/middleware/cache-middleware';
+import { useAuth } from '@/contexts/FirebaseAuthContext';
 
 interface PerformanceMetrics {
   cache: {
@@ -34,10 +35,12 @@ interface PerformanceMetrics {
 }
 
 function PerformanceDashboard() {
+  const { getIdToken } = useAuth();
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null);
   const [memoryUsage, setMemoryUsage] = useState<string>('Not available');
   const [loading, setLoading] = useState(true);
   const [fallbackData, setFallbackData] = useState<any>(null);
+  const [networkStatus, setNetworkStatus] = useState<'online' | 'offline' | 'slow'>('online');
 
   useEffect(() => {
     const fetchMetrics = async () => {
@@ -50,27 +53,76 @@ function PerformanceDashboard() {
                            performanceMetrics.cache.misses > 0;
 
         if (!hasRealData) {
-          // Fetch fallback data from analytics APIs
+          // Fetch fallback data from analytics APIs with authentication
           try {
+            const token = await getIdToken();
+            const headers: HeadersInit = {
+              'Content-Type': 'application/json',
+            };
+            
+            if (token) {
+              headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            // Add timeout to prevent hanging requests
+            const timeoutPromise = (ms: number) => new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Request timeout')), ms)
+            );
+
             const [analyticsResponse, metricsResponse] = await Promise.allSettled([
-              fetch('/api/analytics/comprehensive?days=7'),
-              fetch('/api/analytics/metrics?days=7')
+              Promise.race([
+                fetch('/api/analytics/comprehensive?days=7', { headers }),
+                timeoutPromise(10000) // 10 second timeout
+              ]),
+              Promise.race([
+                fetch('/api/analytics/metrics?days=7'), // This endpoint doesn't require auth
+                timeoutPromise(10000) // 10 second timeout
+              ])
             ]);
 
             const fallback: any = {};
-            if (analyticsResponse.status === 'fulfilled' && analyticsResponse.value.ok) {
-              const analyticsData = await analyticsResponse.value.json();
-              fallback.analytics = analyticsData;
+            
+            // Handle analytics response with proper type checking
+            if (analyticsResponse.status === 'fulfilled' && 
+                analyticsResponse.value instanceof Response && 
+                analyticsResponse.value.ok) {
+              try {
+                const analyticsData = await analyticsResponse.value.json();
+                fallback.analytics = analyticsData;
+              } catch (parseError) {
+                console.warn('Failed to parse analytics response:', parseError);
+              }
+            } else if (analyticsResponse.status === 'fulfilled' && 
+                       analyticsResponse.value instanceof Response) {
+              console.warn('Analytics API error:', analyticsResponse.value.status, analyticsResponse.value.statusText);
+            } else if (analyticsResponse.status === 'rejected') {
+              console.warn('Analytics request failed:', analyticsResponse.reason);
             }
             
-            if (metricsResponse.status === 'fulfilled' && metricsResponse.value.ok) {
-              const metricsData = await metricsResponse.value.json();
-              fallback.metrics = metricsData;
+            // Handle metrics response with proper type checking
+            if (metricsResponse.status === 'fulfilled' && 
+                metricsResponse.value instanceof Response && 
+                metricsResponse.value.ok) {
+              try {
+                const metricsData = await metricsResponse.value.json();
+                fallback.metrics = metricsData;
+              } catch (parseError) {
+                console.warn('Failed to parse metrics response:', parseError);
+              }
+            } else if (metricsResponse.status === 'fulfilled' && 
+                       metricsResponse.value instanceof Response) {
+              console.warn('Metrics API error:', metricsResponse.value.status, metricsResponse.value.statusText);
+            } else if (metricsResponse.status === 'rejected') {
+              console.warn('Metrics request failed:', metricsResponse.reason);
             }
 
             setFallbackData(fallback);
-          } catch (error) {
+            setNetworkStatus('online');
+          } catch (error: any) {
             console.warn('Failed to fetch fallback analytics data:', error);
+            if (error.message.includes('timeout') || error.message.includes('Failed to fetch')) {
+              setNetworkStatus('slow');
+            }
           }
         }
 
@@ -89,11 +141,11 @@ function PerformanceDashboard() {
     // Initial fetch
     fetchMetrics();
 
-    // Update every 5 seconds
-    const interval = setInterval(fetchMetrics, 5000);
+    // Update every 30 seconds instead of 5 seconds to reduce API load
+    const interval = setInterval(fetchMetrics, 30000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [getIdToken]);
 
   if (loading) {
     return (
@@ -211,8 +263,14 @@ function PerformanceDashboard() {
           <p className="text-gray-600">Real-time system performance and cache metrics</p>
         </div>
         <div className="flex items-center space-x-2 text-sm text-gray-500">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span>Live Data</span>
+          <div className={`w-2 h-2 rounded-full animate-pulse ${
+            networkStatus === 'online' ? 'bg-green-500' : 
+            networkStatus === 'slow' ? 'bg-yellow-500' : 'bg-red-500'
+          }`}></div>
+          <span>
+            {networkStatus === 'online' ? 'Live Data' : 
+             networkStatus === 'slow' ? 'Slow Connection' : 'Offline'}
+          </span>
         </div>
       </div>
 

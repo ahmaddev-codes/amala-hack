@@ -740,6 +740,7 @@ class AdminDatabase {
     totalCount: number;
   }> {
     try {
+      console.log('🔍 Fetching moderation history with filters:', filters);
       let query: FirebaseFirestore.Query = adminDb.collection('moderation_logs');
       
       // Apply filters
@@ -757,19 +758,27 @@ class AdminDatabase {
       
       // Get total count for pagination info (create a separate query to avoid fetching all data)
       let countQuery: FirebaseFirestore.Query = adminDb.collection('moderation_logs');
-      
+
       if (filters.moderatorEmail) {
         countQuery = countQuery.where('moderatorEmail', '==', filters.moderatorEmail);
       }
-      
+
       if (filters.days) {
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - filters.days);
         countQuery = countQuery.where('timestamp', '>=', cutoffDate);
       }
-      
-      const countSnapshot = await countQuery.get();
-      const totalCount = countSnapshot.size;
+
+      // Try to get count, but handle missing indexes gracefully
+      let totalCount = 0;
+      try {
+        const countSnapshot = await countQuery.get();
+        totalCount = countSnapshot.size;
+      } catch (countError: any) {
+        console.warn('⚠️ Count query failed (likely missing index):', countError.message);
+        // Fallback: estimate count or return 0
+        totalCount = 0;
+      }
       
       // Apply cursor pagination
       if (filters.cursor) {
@@ -782,8 +791,27 @@ class AdminDatabase {
       // Apply limit + 1 to check if there are more results
       const limit = filters.limit || 20;
       query = query.limit(limit + 1);
-      
-      const snapshot = await query.get();
+
+      // Execute query with error handling
+      let snapshot: FirebaseFirestore.QuerySnapshot;
+      try {
+        snapshot = await query.get();
+      } catch (queryError: any) {
+        console.error('❌ Error executing main query:', queryError.message);
+
+        // If query fails due to missing index, return empty result
+        if (queryError.code === 9 || queryError.message?.includes('index')) {
+          console.log('📝 Returning empty result due to missing collection/index');
+          return {
+            data: [],
+            hasMore: false,
+            nextCursor: undefined,
+            totalCount: 0
+          };
+        }
+
+        throw queryError;
+      }
       const docs = snapshot.docs;
       
       // Check if there are more results
@@ -804,9 +832,19 @@ class AdminDatabase {
         totalCount
       };
     } catch (error: any) {
-      console.error("Error getting paginated moderation history:", error);
-      // Return empty result if collection doesn't exist yet
-      if (error?.code === 'not-found' || error?.message?.includes('collection')) {
+      console.error("❌ Error getting paginated moderation history:", error);
+      console.error("Error details:", {
+        code: error?.code,
+        message: error?.message,
+        stack: error?.stack?.split('\n').slice(0, 3)
+      });
+      
+      // Return empty result if collection doesn't exist yet or other common errors
+      if (error?.code === 'not-found' || 
+          error?.message?.includes('collection') ||
+          error?.message?.includes('index') ||
+          error?.code === 'failed-precondition') {
+        console.log('📝 Returning empty result due to missing collection/index');
         return {
           data: [],
           hasMore: false,

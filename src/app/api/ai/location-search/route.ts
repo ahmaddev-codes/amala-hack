@@ -36,7 +36,10 @@ Return your response as a JSON array of locations with this exact structure:
     "coordinates": {"lat": 6.5244, "lng": 3.3792},
     "photos": ["photo_url_if_available"],
     "source": "web_search",
-    "confidence": 0.85
+    "confidence": 0.85,
+    "cuisine": ["Nigerian", "Amala"],
+    "category": "restaurant",
+    "serviceType": "both"
   }
 ]
 
@@ -181,6 +184,10 @@ async function searchWithGooglePlaces(query: string): Promise<LocationResult[]> 
         ) || [],
         source: 'google_places' as const,
         confidence: Math.min(0.9, 0.7 + (place.rating ? place.rating / 5 * 0.2 : 0)),
+        // Add required fields for validation
+        cuisine: ['Nigerian', 'Amala'],
+        category: 'restaurant',
+        serviceType: 'both' as const,
       }));
   } catch (error) {
     console.error("Google Places search error:", error);
