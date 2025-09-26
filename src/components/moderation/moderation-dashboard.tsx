@@ -153,7 +153,9 @@ export function ModerationDashboard({ stats: parentStats, loading: parentLoading
       }
 
       // Also fetch current pending counts
-      await fetchPendingCounts(idToken);
+      if (idToken) {
+        await fetchPendingCounts(idToken);
+      }
     } catch (err: any) {
       console.error('Error fetching moderation data:', err);
       error('Failed to load moderation data', 'Error');
