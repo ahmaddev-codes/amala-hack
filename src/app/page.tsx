@@ -195,18 +195,22 @@ export default function Home() {
       info(`Submitting ${locations.length} location${locations.length > 1 ? 's' : ''} for review...`, "Submitting Locations");
 
       const submissionPromises = locations.map(async (location) => {
-        const submission: LocationSubmission = {
+        const submission = {
           name: location.name,
           address: location.address,
           description: location.description || `Amala restaurant found via AI search`,
           coordinates: location.coordinates || { lat: 6.5244, lng: 3.3792 }, // Default to Lagos
-          phone: location.phone,
-          website: location.website,
-          rating: location.rating,
-          priceInfo: location.priceRange,
-          photos: location.photos || [],
-          cuisine: ["Nigerian", "Amala"],
-          openingHours: {},
+          phone: location.phone || undefined,
+          website: location.website || undefined,
+          rating: location.rating || undefined,
+          priceRange: location.priceRange || "$$", // Default price range
+          images: location.photos || [],
+          cuisine: location.cuisine || ["Nigerian"], // Use form data or default
+          dietary: [], // Default empty array
+          features: [], // Default empty array
+          discoverySource: "user-submitted" as const,
+          serviceType: location.serviceType || "both" as const, // Use form data or default
+          isOpenNow: true, // Default to open
         };
 
         const response = await fetch("/api/locations", {

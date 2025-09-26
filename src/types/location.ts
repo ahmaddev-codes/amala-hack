@@ -121,6 +121,9 @@ export interface LocationResult {
   photos?: string[];
   source?: string;
   confidence?: number;
+  cuisine?: string[];
+  category?: string;
+  serviceType?: "dine-in" | "takeaway" | "both";
 }
 
 export interface LocationSubmission {
