@@ -38,7 +38,7 @@ const locationSchema = z.object({
   priceRange: z.enum(["$", "$$", "$$$", "$$$$"]).optional(),
   category: z.string().min(1, "Category is required"),
   cuisine: z.array(z.string()).min(1, "At least one cuisine type is required"),
-  serviceType: z.enum(["dine-in", "takeaway", "both"]).default("both"),
+  serviceType: z.enum(["dine-in", "takeaway", "both"]),
   coordinates: z.object({
     lat: z.number().min(-90).max(90),
     lng: z.number().min(-180).max(180),
@@ -69,7 +69,7 @@ export function ManualLocationForm({ onSubmit, onCancel }: ManualLocationFormPro
     defaultValues: {
       category: "restaurant",
       cuisine: ["Nigerian"],
-      serviceType: "both",
+      serviceType: "both" as const,
       coordinates: { lat: 6.5244, lng: 3.3792 }, // Default to Lagos
     },
   });
