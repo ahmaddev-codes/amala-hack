@@ -280,7 +280,7 @@ export function ModerationHistory() {
 
       let todayActions = 0;
       let topModeratorName = 'N/A';
-      let moderatorCounts: Record<string, { count: number; name: string }> = {};
+      const moderatorCounts: Record<string, { count: number; name: string }> = {};
 
       if (todayResponse.ok) {
         const todayData = await todayResponse.json();

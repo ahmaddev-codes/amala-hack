@@ -57,7 +57,7 @@ function PerformanceDashboard() {
               fetch('/api/analytics/metrics?days=7')
             ]);
 
-            let fallback: any = {};
+            const fallback: any = {};
             if (analyticsResponse.status === 'fulfilled' && analyticsResponse.value.ok) {
               const analyticsData = await analyticsResponse.value.json();
               fallback.analytics = analyticsData;
