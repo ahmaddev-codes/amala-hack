@@ -5,10 +5,6 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/FirebaseAuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { BrandLogo } from "@/components/ui/brand-logo";
-import { NetworkStatus } from "@/components/ui/network-status";
-import { FirebaseAnalyticsService as analytics } from '@/lib/analytics/firebase-analytics';
-import { NetworkChecker } from '@/lib/utils/network-checker';
-import { OfflineAuthService } from '@/lib/auth/offline-auth';
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,10 +13,8 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
-  MapPinIcon,
   EnvelopeIcon,
   LockClosedIcon,
   EyeIcon,
@@ -28,6 +22,7 @@ import {
   UserIcon
 } from "@heroicons/react/24/outline";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { getCurrentLocation, storeUserLocation } from "@/lib/geolocation";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -40,7 +35,11 @@ export default function LoginPage() {
     preferredMethod: 'email' | 'google' | 'both';
     message: string;
     showGoogleButton: boolean;
-  } | null>(null);
+  }>({
+    preferredMethod: 'both',
+    message: 'All authentication methods available',
+    showGoogleButton: true
+  });
   const router = useRouter();
   const { signIn, signUp, signInWithGoogle, user, isLoading: authLoading } = useAuth();
   const { success, error: showErrorToast, warning, info } = useToast();
@@ -61,47 +60,30 @@ export default function LoginPage() {
     }
   }, [user, authLoading, router]);
 
-  // Track page view on component mount
+  // Track page view on component mount (only once)
   useEffect(() => {
     analytics.trackPageView('Login Page', 'Authentication');
-  }, [analytics]);
+  }, []); // Empty dependency array to run only once
 
-  // Check auth recommendations on component mount
-  useEffect(() => {
-    const checkAuthRecommendations = async () => {
-      try {
-        const recommendations = await OfflineAuthService.getAuthRecommendations();
-        setAuthRecommendations(recommendations);
-        
-        if (recommendations.preferredMethod === 'email') {
-          info(recommendations.message, 'Authentication Notice');
-        }
-      } catch (error) {
-        console.warn('Failed to check auth recommendations:', error);
-        // Only show fallback after a delay to avoid premature network errors
-        setTimeout(() => {
-          setAuthRecommendations({
-            preferredMethod: 'both',
-            message: 'All authentication methods available',
-            showGoogleButton: true
-          });
-        }, 2000); // 2 second delay
-      }
-    };
-
-    // Set initial fallback with delay to prevent premature error messages
-    setTimeout(() => {
-      if (!authRecommendations) {
-        setAuthRecommendations({
-          preferredMethod: 'both',
-          message: 'All authentication methods available',
-          showGoogleButton: true
-        });
-      }
-    }, 3000); // 3 second delay for initial fallback
-    
-    checkAuthRecommendations();
-  }, [info, authRecommendations]);
+  // Function to prepare user location for map centering
+  const prepareUserLocation = async () => {
+    try {
+      const location = await getCurrentLocation({
+        timeout: 8000,
+        enableHighAccuracy: false,
+        maximumAge: 300000, // 5 minutes cache
+      });
+      
+      storeUserLocation(location);
+      console.log("📍 User location prepared for map:", location);
+      
+      // Store a flag to indicate that location should be used on map load
+      sessionStorage.setItem('useUserLocationOnMap', 'true');
+    } catch (error) {
+      console.log("📍 Could not get user location for map:", error);
+      // Don't show error to user - this is optional functionality
+    }
+  };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,14 +97,10 @@ export default function LoginPage() {
           return;
         }
         
-        const result = await OfflineAuthService.signUpWithEmail(email, password, name);
+        const result = await signUp(email, password, name);
         
-        if (!result.success) {
-          if (result.networkIssue) {
-            success("Slow network detected - please wait while we process your sign up...", "Network Status");
-          } else {
-            showErrorToast(result.error!, "Sign Up Error");
-          }
+        if (result.error) {
+          showErrorToast(result.error, "Sign Up Error");
           setIsLoading(false);
           return;
         }
@@ -131,17 +109,18 @@ export default function LoginPage() {
         analytics.trackSignUp('email');
         success("Account created successfully! Welcome to Amala Discovery Platform.", "Welcome!");
         
+        // Prepare user location for map centering (non-blocking)
+        prepareUserLocation().catch(() => {
+          // Silently handle location errors - don't show to user
+        });
+        
         // Auto-redirect after successful sign-up
         router.push("/");
       } else {
-        const result = await OfflineAuthService.signInWithEmail(email, password);
+        const result = await signIn(email, password);
         
-        if (!result.success) {
-          if (result.networkIssue) {
-            success("Slow network detected - please wait while we process your sign in...", "Network Status");
-          } else {
-            showErrorToast(result.error!, "Sign In Error");
-          }
+        if (result.error) {
+          showErrorToast(result.error, "Sign In Error");
           setIsLoading(false);
           return;
         }
@@ -150,11 +129,17 @@ export default function LoginPage() {
         analytics.trackLogin('email');
         success("Welcome back!", "Login Successful");
         
+        // Prepare user location for map centering (non-blocking)
+        prepareUserLocation().catch(() => {
+          // Silently handle location errors - don't show to user
+        });
+        
         router.push("/");
       }
     } catch (error: any) {
       console.error("Auth error:", error);
-      showErrorToast("An unexpected error occurred. Please try again.", "Authentication Error");
+      showErrorToast(error.message || "An unexpected error occurred. Please try again.", "Authentication Error");
+    } finally {
       setIsLoading(false);
     }
   };
@@ -171,11 +156,6 @@ export default function LoginPage() {
             "Please allow popups for this site and try again, or check your browser settings.",
             "Popup Blocked"
           );
-        } else if (result.error.includes("network")) {
-          success(
-            "Slow network detected - please wait while we process your Google sign in...",
-            "Network Status"
-          );
         } else {
           showErrorToast(result.error, "Sign-in Error");
         }
@@ -185,6 +165,11 @@ export default function LoginPage() {
       // Track successful Google authentication
       analytics.trackLogin('google');
       
+      // Prepare user location for map centering (non-blocking)
+      prepareUserLocation().catch(() => {
+        // Silently handle location errors - don't show to user
+      });
+      
       // Success or redirect in progress
       console.log("🔄 Google auth initiated successfully");
       success("Successfully signed in with Google!", "Welcome!");
@@ -192,7 +177,8 @@ export default function LoginPage() {
       
     } catch (error: any) {
       console.error("❌ Google auth error:", error);
-      showErrorToast(error.message, "Google Authentication Error");
+      showErrorToast(error.message || "Google authentication failed. Please try again.", "Google Authentication Error");
+    } finally {
       setIsLoading(false);
     }
   };
@@ -231,9 +217,6 @@ export default function LoginPage() {
                   : "Sign in to your account to continue"}
               </p>
             </div>
-
-            {/* Network Status */}
-            <NetworkStatus className="mb-6" />
 
             <form onSubmit={handleAuth} className="space-y-6">
               {isSignUp && (
