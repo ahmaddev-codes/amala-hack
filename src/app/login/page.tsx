@@ -149,18 +149,6 @@ export default function LoginPage() {
     
     try {
       const result = await signInWithGoogle();
-      if (result.error) {
-        // Show user-friendly error message
-        if (result.error.includes("popup")) {
-          showErrorToast(
-            "Please allow popups for this site and try again, or check your browser settings.",
-            "Popup Blocked"
-          );
-        } else {
-          showErrorToast(result.error, "Sign-in Error");
-        }
-        throw new Error(result.error);
-      }
       
       // Track successful Google authentication
       analytics.trackLogin('google');
@@ -173,11 +161,10 @@ export default function LoginPage() {
       // Success or redirect in progress
       console.log("🔄 Google auth initiated successfully");
       success("Successfully signed in with Google!", "Welcome!");
-      setIsLoading(false);
       
     } catch (error: any) {
       console.error("❌ Google auth error:", error);
-      showErrorToast(error.message || "Google authentication failed. Please try again.", "Google Authentication Error");
+      // Silently handle auth errors - don't show toast
     } finally {
       setIsLoading(false);
     }
