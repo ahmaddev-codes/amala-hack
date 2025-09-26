@@ -133,11 +133,11 @@ function AdminDashboard() {
       // Transform the data to match ChartData interface
       const transformedData: ChartData[] = data.map(item => ({
         date: item.date,
-        users: Math.floor(item.submissions * 0.3), // Estimate users from submissions
-        locations: item.submissions, // Use submissions as locations
-        reviews: Math.floor(item.submissions * 1.5), // Estimate reviews
-        approvals: Math.floor(item.submissions * 0.8), // Estimate approvals
-        rejections: Math.floor(item.submissions * 0.2), // Estimate rejections
+        users: item.users || Math.floor(item.submissions * 0.3), // Use real users if available, otherwise estimate
+        locations: item.locations || item.submissions, // Use real locations if available
+        reviews: item.reviews || Math.floor(item.submissions * 1.5), // Use real reviews if available
+        approvals: item.approvals || Math.floor(item.submissions * 0.8), // Use real approvals if available
+        rejections: item.rejections || Math.floor(item.submissions * 0.2), // Use real rejections if available
       }));
       setChartData(transformedData);
       return;
