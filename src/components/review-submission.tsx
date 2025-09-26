@@ -651,7 +651,7 @@ export function ReviewSubmission({
       {/* Terms Notice */}
       <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
         <div className="text-xs text-blue-700 text-center">
-          <strong>📋 Moderation Notice:</strong> All reviews are reviewed by our team before publication to ensure quality and authenticity. You'll be able to see your review status in your submission history.
+          <strong>📋 Moderation Notice:</strong> All reviews are reviewed by our team before publication to ensure quality and authenticity. You&apos;ll be able to see your review status in your submission history.
         </div>
       </div>
     </div>

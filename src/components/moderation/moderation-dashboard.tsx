@@ -457,7 +457,7 @@ export function ModerationDashboard({ stats: parentStats, loading: parentLoading
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Moderation Activity Over Time */}
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Moderation Activity</h3>
