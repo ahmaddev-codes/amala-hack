@@ -22,6 +22,7 @@ import { trackEvent } from "@/lib/utils";
 import { useState } from "react";
 import { ReviewSubmission } from "./review-submission";
 import { useAuth } from "@/contexts/FirebaseAuthContext";
+import { useLocationReviews } from "@/hooks/useLocationReviews";
 
 interface LocationInfoWindowProps {
   location: AmalaLocation;
@@ -34,6 +35,9 @@ export function LocationInfoWindow({ location, onDirections, onShare, onSave }: 
   const { user } = useAuth();
   const { info } = useToast();
   const [showReviewForm, setShowReviewForm] = useState(false);
+  
+  // Get real review data for this location
+  const { reviews, reviewCount, averageRating, loading: reviewsLoading } = useLocationReviews(location.id);
   const handleDirections = () => {
     // Instead of opening external maps, just center the map on this location
     // and show a message about directions
@@ -122,25 +126,34 @@ export function LocationInfoWindow({ location, onDirections, onShare, onSave }: 
             {location.name}
           </h3>
 
-          {location.rating && (
-            <div className="flex items-center gap-2">
-              <div className="flex items-center">
-                {[...Array(5)].map((_, i) => (
+          {/* Always show rating section with real data */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center">
+              {[...Array(5)].map((_, i) => {
+                const filled = i < Math.floor(averageRating);
+                const halfFilled = i === Math.floor(averageRating) && averageRating % 1 >= 0.5;
+                
+                return (
                   <Star
                     key={i}
                     className={`w-4 h-4 ${
-                      i < Math.floor(location.rating!)
+                      filled
                         ? "fill-yellow-400 text-yellow-400"
+                        : halfFilled
+                        ? "fill-yellow-200 text-yellow-400"
                         : "text-gray-300"
                     }`}
                   />
-                ))}
-              </div>
-              <span className="text-sm text-gray-600">
-                {location.rating} ({location.reviewCount} reviews)
-              </span>
+                );
+              })}
             </div>
-          )}
+            <span className="text-sm text-gray-600">
+              {averageRating > 0 ? averageRating.toFixed(1) : "0.0"} ({reviewCount} reviews)
+            </span>
+            {reviewsLoading && (
+              <span className="text-xs text-gray-400 ml-1">Loading...</span>
+            )}
+          </div>
         </div>
 
         {/* Price and Service Type */}
@@ -236,7 +249,7 @@ export function LocationInfoWindow({ location, onDirections, onShare, onSave }: 
         {user && (
           <button
             onClick={() => setShowReviewForm(true)}
-            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-3"
+            className="w-full bg-orange-600 hover:bg-orange-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 mb-3"
           >
             <RateReview className="w-4 h-4" />
             Write a Review
@@ -258,12 +271,12 @@ export function LocationInfoWindow({ location, onDirections, onShare, onSave }: 
 
       {/* Review Form Modal */}
       {showReviewForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 sm:p-6 z-50">
+        <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 sm:p-6 z-50">
           <ReviewSubmission
             location={location}
             onSubmitted={() => {
               setShowReviewForm(false);
-              // Optionally refresh location data or show success message
+              // The useLocationReviews hook will automatically refresh the data
             }}
             onCancel={() => setShowReviewForm(false)}
           />
