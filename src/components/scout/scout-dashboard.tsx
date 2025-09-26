@@ -384,7 +384,7 @@ export function ScoutDashboard() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
@@ -435,7 +435,7 @@ export function ScoutDashboard() {
             </div>
 
             {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               {/* Submissions Over Time */}
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Submissions Over Time</h3>
@@ -662,7 +662,7 @@ export function ScoutDashboard() {
             </div>
 
             {/* Stats Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
                 <div className="flex items-center">
                   <div className="p-3 bg-blue-100 rounded-lg">
@@ -721,7 +721,7 @@ export function ScoutDashboard() {
             </div>
 
             {/* Discovery Panel */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8">
               {/* Discovery Configuration */}
               <div className="lg:col-span-2">
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200">
@@ -802,7 +802,7 @@ export function ScoutDashboard() {
         {activeTab === 'analytics' && (
           <div className="space-y-6">
             {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               {/* Submissions Over Time */}
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Submissions Over Time</h3>
@@ -888,7 +888,7 @@ export function ScoutDashboard() {
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Scout Achievements</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-4 rounded-lg border border-yellow-200">
                   <div className="flex items-center mb-2">
                     <TrophyIcon className="w-6 h-6 text-yellow-600 mr-2" />
