@@ -93,23 +93,6 @@ export function MapControls({
     <>
       {/* Right side controls - responsive positioning */}
       <div className="absolute top-20 xl:top-4 right-4 space-y-2">
-        {/* Zoom Controls - Always visible */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <button
-            onClick={handleZoomIn}
-            className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 transition-colors border-b border-gray-200"
-            title="Zoom in"
-          >
-            <ZoomIn className="w-4 h-4 text-gray-700" />
-          </button>
-          <button
-            onClick={handleZoomOut}
-            className="w-10 h-10 flex items-center justify-center hover:bg-gray-100 transition-colors"
-            title="Zoom out"
-          >
-            <ZoomOut className="w-4 h-4 text-gray-700" />
-          </button>
-        </div>
 
         {/* Map Type Toggle - Hidden on small mobile, visible on larger screens */}
         <div className="hidden sm:block bg-white rounded-lg shadow-md overflow-hidden">
@@ -141,15 +124,6 @@ export function MapControls({
           title="My location"
         >
           <Navigation className="w-4 h-4 text-primary" />
-        </button>
-
-        {/* Recenter button - Hidden on mobile to save space */}
-        <button
-          onClick={handleRecenter}
-          className="hidden sm:flex w-10 h-10 bg-white rounded-lg shadow-md items-center justify-center hover:bg-gray-100 transition-colors"
-          title="Show all locations"
-        >
-          <LocateIcon className="w-4 h-4 text-gray-700" />
         </button>
       </div>
 
@@ -214,15 +188,6 @@ export function MapControls({
           ) : (
             <MapIcon className="w-4 h-4 text-gray-700" />
           )}
-        </button>
-        
-        {/* Recenter button for mobile */}
-        <button
-          onClick={handleRecenter}
-          className="w-10 h-10 bg-white rounded-lg shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
-          title="Show all locations"
-        >
-          <LocateIcon className="w-4 h-4 text-gray-700" />
         </button>
       </div>
     </>

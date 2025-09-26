@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '@/contexts/FirebaseAuthContext';
 import { useToast } from '@/contexts/ToastContext';
+
+// Lazy load discovery panel
+const LazyDiscoveryPanel = lazy(() => import("@/components/discovery/discovery-panel"));
 import {
   LineChart,
   Line,
@@ -39,6 +42,9 @@ import {
   ChevronUpIcon,
   ChevronDownIcon,
   AdjustmentsHorizontalIcon,
+  CpuChipIcon,
+  MagnifyingGlassIcon,
+  PlayIcon,
 } from '@heroicons/react/24/outline';
 import {
   StarIcon as StarSolid,
@@ -47,6 +53,7 @@ import {
 } from '@heroicons/react/24/solid';
 import { ScoutDashboardSkeleton } from "@/components/skeletons";
 import { ResponsiveSidebar } from "@/components/responsive-sidebar";
+import { ComponentLoader } from "@/components/ui/loading-spinner";
 
 interface ScoutStats {
   totalSubmissions: number;
@@ -109,6 +116,8 @@ export function ScoutDashboard() {
   const [timeRange, setTimeRange] = useState('30d');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [sortedSubmissions, setSortedSubmissions] = useState<SubmissionData[]>([]);
+  const [discoveryStats, setDiscoveryStats] = useState<any>(null);
+  const [discoveryLoading, setDiscoveryLoading] = useState(false);
 
   useEffect(() => {
     fetchScoutData();
@@ -117,6 +126,13 @@ export function ScoutDashboard() {
   useEffect(() => {
     setSortedSubmissions(sortSubmissions(submissions, sortOrder));
   }, [submissions, sortOrder]);
+
+  useEffect(() => {
+    // Fetch discovery stats when discovery tab is active
+    if (activeTab === 'discovery' && user) {
+      fetchDiscoveryStats();
+    }
+  }, [activeTab, user]);
 
   const fetchScoutData = async () => {
     try {
@@ -194,6 +210,32 @@ export function ScoutDashboard() {
     setSortOrder(newOrder);
   };
 
+  const fetchDiscoveryStats = async () => {
+    try {
+      setDiscoveryLoading(true);
+      const idToken = await getIdToken();
+
+      const response = await fetch('/api/discovery/stats', {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDiscoveryStats(data);
+      } else {
+        console.error('Failed to fetch discovery stats:', response.statusText);
+      }
+    } catch (err: any) {
+      console.error('Error fetching discovery stats:', err);
+      error('Failed to load discovery stats', 'Error');
+    } finally {
+      setDiscoveryLoading(false);
+    }
+  };
+
   const getScoutLevelIcon = (level: string) => {
     if (level.includes('Master')) return <TrophySolid className="w-6 h-6 text-yellow-500" />;
     if (level.includes('Expert')) return <StarSolid className="w-6 h-6 text-purple-500" />;
@@ -230,18 +272,37 @@ export function ScoutDashboard() {
     }
   };
 
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date);
+  const formatDate = (date: Date | string | number | null | undefined) => {
+    try {
+      // Handle null, undefined, or empty values
+      if (date === null || date === undefined || date === '') {
+        return 'No date';
+      }
+
+      const dateObj = date instanceof Date ? date : new Date(date);
+
+      // Check if the date is valid
+      if (isNaN(dateObj.getTime())) {
+        console.warn('Invalid date value received:', date);
+        return 'Invalid date';
+      }
+
+      return new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(dateObj);
+    } catch (error) {
+      console.error('Date formatting error:', error, 'Input:', date);
+      return 'Invalid date';
+    }
   };
 
   const sidebarItems = [
     { id: "overview", label: "Overview", icon: ChartBarIcon },
     { id: "submissions", label: "My Submissions", icon: MapPinIcon, count: stats.totalSubmissions },
+    { id: "discovery", label: "Discovery", icon: CpuChipIcon },
     { id: "analytics", label: "Analytics", icon: ArrowTrendingUpIcon },
     { id: "achievements", label: "Achievements", icon: TrophyIcon }
   ];
@@ -271,10 +332,16 @@ export function ScoutDashboard() {
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
               {activeTab === 'overview' && 'Scout Overview'}
               {activeTab === 'submissions' && 'My Submissions'}
+              {activeTab === 'discovery' && 'Autonomous Discovery'}
               {activeTab === 'analytics' && 'Performance Analytics'}
               {activeTab === 'achievements' && 'Achievements'}
             </h1>
-            <p className="text-sm text-gray-600 mt-1">Track your location discovery progress</p>
+            <p className="text-sm text-gray-600 mt-1">
+              {activeTab === 'discovery'
+                ? 'Use AI-powered tools to discover new Amala locations'
+                : 'Track your location discovery progress'
+              }
+            </p>
           </div>
           <div className="mt-4 sm:mt-0 flex items-center space-x-3">
             <select
@@ -464,8 +531,8 @@ export function ScoutDashboard() {
                       <button
                         onClick={() => handleSortChange('desc')}
                         className={`flex items-center px-3 py-1 rounded-md text-xs font-medium transition-colors ${sortOrder === 'desc'
-                            ? 'bg-orange-600 text-white shadow-sm'
-                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+                          ? 'bg-orange-600 text-white shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
                           }`}
                       >
                         <ChevronDownIcon className="w-3 h-3 mr-1" />
@@ -474,8 +541,8 @@ export function ScoutDashboard() {
                       <button
                         onClick={() => handleSortChange('asc')}
                         className={`flex items-center px-3 py-1 rounded-md text-xs font-medium transition-colors ${sortOrder === 'asc'
-                            ? 'bg-orange-600 text-white shadow-sm'
-                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
+                          ? 'bg-orange-600 text-white shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-200'
                           }`}
                       >
                         <ChevronUpIcon className="w-3 h-3 mr-1" />
@@ -570,6 +637,164 @@ export function ScoutDashboard() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'discovery' && (
+          <div className="space-y-8">
+            {/* Header with Refresh Button */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">Autonomous Discovery</h2>
+                <p className="text-sm text-gray-600 mt-1">Discover new Amala locations using AI-powered search</p>
+              </div>
+              <button
+                onClick={fetchDiscoveryStats}
+                disabled={discoveryLoading}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <svg className={`w-4 h-4 mr-2 ${discoveryLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {discoveryLoading ? 'Refreshing...' : 'Refresh Data'}
+              </button>
+            </div>
+
+            {/* Stats Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="p-3 bg-blue-100 rounded-lg">
+                    <CpuChipIcon className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">Total Sessions</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {discoveryLoading ? '...' : (discoveryStats?.totalSessions || 0)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="p-3 bg-green-100 rounded-lg">
+                    <MapPinIcon className="w-6 h-6 text-green-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">Locations Found</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {discoveryLoading ? '...' : (discoveryStats?.totalLocationsFound || 0)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="p-3 bg-purple-100 rounded-lg">
+                    <CheckCircleIcon className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">Success Rate</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {discoveryLoading ? '...' : `${(discoveryStats?.successRate || 0).toFixed(1)}%`}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="p-3 bg-orange-100 rounded-lg">
+                    <GlobeAltIcon className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-600">Regions Covered</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {discoveryLoading ? '...' : (discoveryStats?.regionsCovered || 0)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Discovery Panel */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Discovery Configuration */}
+              <div className="lg:col-span-2">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+                      <MagnifyingGlassIcon className="w-5 h-5 mr-2 text-blue-600" />
+                      Discovery Configuration
+                    </h2>
+                    <p className="text-sm text-gray-500 mt-1">Configure and launch autonomous discovery sessions</p>
+                  </div>
+                  <div className="p-6">
+                    <Suspense fallback={<ComponentLoader message="Loading discovery panel..." />}>
+                      <LazyDiscoveryPanel />
+                    </Suspense>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions & Info */}
+              <div className="space-y-6">
+                {/* Quick Actions */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>
+                  </div>
+                  <div className="p-6 space-y-3">
+                    <button className="w-full flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                      <PlayIcon className="w-4 h-4 mr-2" />
+                      Start Discovery
+                    </button>
+                    <button className="w-full flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium">
+                      <GlobeAltIcon className="w-4 h-4 mr-2" />
+                      Regional Search
+                    </button>
+                    <button className="w-full flex items-center justify-center px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium">
+                      <ChartBarIcon className="w-4 h-4 mr-2" />
+                      View Results
+                    </button>
+                  </div>
+                </div>
+
+                {/* Discovery Tips */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-900">Scout Tips</h3>
+                  </div>
+                  <div className="p-6">
+                    <div className="space-y-4">
+                      <div className="flex items-start space-x-3">
+                        <div className="w-2 h-2 rounded-full bg-blue-400 mt-2"></div>
+                        <div>
+                          <p className="text-sm text-gray-900 font-medium">Target specific regions</p>
+                          <p className="text-xs text-gray-500">Focus on areas with high Amala concentration</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="w-2 h-2 rounded-full bg-green-400 mt-2"></div>
+                        <div>
+                          <p className="text-sm text-gray-900 font-medium">Use varied search terms</p>
+                          <p className="text-xs text-gray-500">Try different keywords for better coverage</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start space-x-3">
+                        <div className="w-2 h-2 rounded-full bg-purple-400 mt-2"></div>
+                        <div>
+                          <p className="text-sm text-gray-900 font-medium">Monitor success rates</p>
+                          <p className="text-xs text-gray-500">Track which strategies work best</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}

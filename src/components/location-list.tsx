@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { IoStar, IoStarHalf, IoStarOutline } from "react-icons/io5";
 import { AmalaLocation, Review } from "@/types/location";
+import { useMultipleLocationReviews } from "@/hooks/useLocationReviews";
 
 interface LocationReview {
   id: string;
@@ -27,51 +28,30 @@ export function LocationList({
   selectedLocation,
   onLocationSelect,
 }: LocationListProps) {
-  const [locationReviews, setLocationReviews] = useState<
-    Record<string, LocationReview[]>
-  >({});
+  // Use the new hook for consistent review data
+  const locationIds = locations.map(loc => loc.id);
+  const { data: reviewsData, loading: reviewsLoading } = useMultipleLocationReviews(locationIds);
 
-  // Fetch reviews for all locations
-  useEffect(() => {
-    const fetchReviews = async () => {
-      for (const location of locations) {
-        try {
-          console.log(`Fetching reviews for ${location.name} (ID: ${location.id})`);
-          const response = await fetch(`/api/reviews?location_id=${location.id}`);
-          console.log(`Response status for ${location.name}:`, response.status);
-          
-          if (response.ok) {
-            const data = await response.json();
-            console.log(`Reviews data for ${location.name}:`, data);
-            if (data.success) {
-              setLocationReviews((prev) => ({
-                ...prev,
-                [location.id]: data.reviews || [],
-              }));
-            }
-          } else {
-            console.error(`API error for ${location.name}:`, response.status, response.statusText);
-          }
-        } catch (error) {
-          console.error(`Failed to fetch reviews for ${location.name}:`, error);
-        }
-      }
-    };
-
-    if (locations.length > 0) {
-      fetchReviews();
-    }
-  }, [locations]);
-
-  const getLatestReview = (locationId: string): LocationReview | null => {
-    const reviews = locationReviews[locationId] || [];
-    if (reviews.length === 0) return null;
-    // Return the most recent review instead of random
-    return reviews.sort((a, b) => {
+  const getLatestReview = (locationId: string): Review | null => {
+    const locationData = reviewsData[locationId];
+    if (!locationData || locationData.reviews.length === 0) return null;
+    
+    // Return the most recent review
+    return locationData.reviews.sort((a, b) => {
       const dateA = a.date_posted ? new Date(a.date_posted).getTime() : 0;
       const dateB = b.date_posted ? new Date(b.date_posted).getTime() : 0;
       return dateB - dateA;
     })[0];
+  };
+
+  // Get real rating and review count for a location
+  const getLocationStats = (locationId: string) => {
+    const locationData = reviewsData[locationId];
+    return {
+      rating: locationData?.averageRating || 0,
+      reviewCount: locationData?.reviewCount || 0,
+      hasRealData: !!locationData && !locationData.loading
+    };
   };
 
   const getCurrentHours = (location: AmalaLocation): string | null => {
@@ -108,52 +88,71 @@ export function LocationList({
                   </h3>
                 </div>
 
-                {/* Rating section - only show if real rating exists */}
-                {loc.rating && (
-                  <div className="mb-1">
-                    <div className="flex items-center">
-                      <span className="text-sm font-medium text-gray-900 mr-1">
-                        {loc.rating.toFixed(1)}
-                      </span>
-
-                      {/* 5 stars */}
-                      <div className="flex items-center mr-1">
-                        {[...Array(5)].map((_, i) => {
-                          const rating = loc.rating!;
-                          const filled = i < Math.floor(rating);
-                          const halfFilled =
-                            i === Math.floor(rating) && rating % 1 >= 0.5;
-
-                          return (
-                            <span
-                              key={i}
-                              className="text-yellow-500"
-                              style={{ fontSize: "12px" }}
-                            >
-                              {filled ? (
-                                <IoStar />
-                              ) : halfFilled ? (
-                                <IoStarHalf />
-                              ) : (
-                                <IoStarOutline className="text-gray-300" />
-                              )}
+                {/* Rating section - show real data or 0 if no reviews */}
+                {(() => {
+                  const stats = getLocationStats(loc.id);
+                  const { rating, reviewCount, hasRealData } = stats;
+                  
+                  // Always show rating section, but display 0 if no real data
+                  return (
+                    <div className="mb-1">
+                      <div className="flex items-center">
+                        {rating > 0 ? (
+                          <>
+                            <span className="text-sm font-medium text-gray-900 mr-1">
+                              {rating.toFixed(1)}
                             </span>
-                          );
-                        })}
+                            {/* 5 stars */}
+                            <div className="flex items-center mr-1">
+                              {[...Array(5)].map((_, i) => {
+                                const filled = i < Math.floor(rating);
+                                const halfFilled =
+                                  i === Math.floor(rating) && rating % 1 >= 0.5;
+
+                                return (
+                                  <span
+                                    key={i}
+                                    className="text-yellow-500"
+                                    style={{ fontSize: "12px" }}
+                                  >
+                                    {filled ? (
+                                      <IoStar />
+                                    ) : halfFilled ? (
+                                      <IoStarHalf />
+                                    ) : (
+                                      <IoStarOutline className="text-gray-300" />
+                                    )}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-sm font-medium text-gray-500 mr-1">
+                              0.0
+                            </span>
+                            {/* 5 empty stars */}
+                            <div className="flex items-center mr-1">
+                              {[...Array(5)].map((_, i) => (
+                                <span
+                                  key={i}
+                                  className="text-gray-300"
+                                  style={{ fontSize: "12px" }}
+                                >
+                                  <IoStarOutline />
+                                </span>
+                              ))}
+                            </div>
+                          </>
+                        )}
                         <span className="text-sm text-gray-600 ml-1">
-                          (
-                          {(() => {
-                            const fetchedCount = locationReviews[loc.id]?.length || 0;
-                            const originalCount = loc.reviewCount;
-                            console.log(`Location ${loc.name}: originalCount=${originalCount}, fetchedCount=${fetchedCount}`);
-                            return fetchedCount;
-                          })()}
-                          )
+                          ({reviewCount})
                         </span>
                       </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Restaurant type and address */}
                 <div className="mb-1">
@@ -234,9 +233,9 @@ export function LocationList({
                 return (
                   <>
                     <div className="w-4 h-4 rounded-full bg-gray-300 flex-shrink-0 mr-2 mt-0.5 overflow-hidden">
-                      {review.author_photo ? (
+                      {review.user_photo ? (
                         <Image
-                          src={review.author_photo}
+                          src={review.user_photo}
                           alt=""
                           width={16}
                           height={16}
@@ -250,15 +249,14 @@ export function LocationList({
                     <div className="flex-1">
                       <div className="text-sm text-gray-600 italic leading-tight">
                         &ldquo;
-                        {review.text.length > 120
+                        {review.text && review.text.length > 120
                           ? review.text.substring(0, 120) + "..."
-                          : review.text}
+                          : review.text || "Great place!"}
                         &rdquo;
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
-                        {review.author} •{" "}
-                        {review.publish_time_description || "Recently"}
-                        {review.source === "google-places-api" && " • Google"}
+                        {review.user_name || review.author || "Anonymous"} •{" "}
+                        {review.date_posted ? new Date(review.date_posted).toLocaleDateString() : "Recently"}
                       </div>
                     </div>
                   </>

@@ -1011,7 +1011,7 @@ export function GoogleMapsLocationDetail({
 
       {/* Review Form Modal */}
       {showReviewForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 sm:p-6 z-50">
+        <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 sm:p-6 z-50">
           <ReviewSubmission
             location={location}
             onSubmitted={async () => {
