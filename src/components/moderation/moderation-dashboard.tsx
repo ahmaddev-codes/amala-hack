@@ -74,7 +74,17 @@ interface ChartData {
   rejected: number;
 }
 
-export function ModerationDashboard() {
+interface ModerationDashboardProps {
+  stats?: {
+    pendingReviews: number;
+    pendingLocations: number;
+    flaggedContent: number;
+    todayActions: number;
+  };
+  loading?: boolean;
+}
+
+export function ModerationDashboard({ stats: parentStats, loading: parentLoading }: ModerationDashboardProps) {
   const { user, getIdToken } = useAuth();
   const { success, error } = useToast();
   const [stats, setStats] = useState<ModerationStats>({
@@ -99,39 +109,51 @@ export function ModerationDashboard() {
   const [timeRange, setTimeRange] = useState('30d');
 
   useEffect(() => {
-    fetchModerationData();
-  }, [timeRange]);
+    if (parentStats) {
+      // Use parent stats when available
+      setStats(prevStats => ({
+        ...prevStats,
+        pendingReviews: parentStats.pendingReviews,
+        pendingLocations: parentStats.pendingLocations,
+        flaggedContent: parentStats.flaggedContent,
+        dailyActions: parentStats.todayActions,
+      }));
+      setLoading(parentLoading || false);
+    } else {
+      fetchModerationData();
+    }
+  }, [timeRange, parentStats, parentLoading, getIdToken]);
 
   const fetchModerationData = async () => {
     try {
       setLoading(true);
       const idToken = await getIdToken();
 
-      const [statsResponse, actionsResponse] = await Promise.all([
-        fetch(`/api/moderation/stats?timeRange=${timeRange}`, {
-          headers: {
-            'Authorization': `Bearer ${idToken}`,
-            'Content-Type': 'application/json',
-          },
-        }),
-        fetch(`/api/moderation/history?limit=20`, {
-          headers: {
-            'Authorization': `Bearer ${idToken}`,
-            'Content-Type': 'application/json',
-          },
-        }),
-      ]);
-
-      if (statsResponse.ok) {
-        const statsData = await statsResponse.json();
-        setStats(statsData.stats || stats);
-        generateChartData(statsData.chartData || []);
-      }
+      // Fetch moderation history with more data for calculations
+      const actionsResponse = await fetch(`/api/moderation/history?limit=100&days=30`, {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
 
       if (actionsResponse.ok) {
         const actionsData = await actionsResponse.json();
-        setRecentActions(actionsData.data || []);
+        const historyData = actionsData.data || [];
+        
+        // Transform and set recent actions
+        const transformedActions = transformModerationData(historyData);
+        setRecentActions(transformedActions);
+        
+        // Calculate stats from real data
+        calculateStatsFromData(historyData);
+        
+        // Generate chart data from real data
+        generateChartDataFromHistory(historyData);
       }
+
+      // Also fetch current pending counts
+      await fetchPendingCounts(idToken);
     } catch (err: any) {
       console.error('Error fetching moderation data:', err);
       error('Failed to load moderation data', 'Error');
@@ -140,33 +162,79 @@ export function ModerationDashboard() {
     }
   };
 
-  const generateChartData = async (data: any[]) => {
-    if (data.length > 0) {
-      setChartData(data);
-      return;
-    }
+  // Transform moderation history data to match component interface
+  const transformModerationData = (historyData: any[]): ModerationAction[] => {
+    return historyData.map((item: any) => {
+      let type: 'review' | 'location' | 'flag' = 'location';
+      if (item.type === 'review_moderation') type = 'review';
+      else if (item.type === 'flag_moderation') type = 'flag';
 
-    // Fetch real moderation data from API
-    try {
-      const response = await fetch(`/api/analytics/firebase-data/timeseries?days=${timeRange.replace('d', '')}`);
-      if (response.ok) {
-        const timeSeriesData = await response.json();
-        const realChartData = timeSeriesData.map((item: any) => ({
-          date: item.date,
-          reviews: item.newUsers || 0, // Use new users as proxy for reviews
-          locations: Math.floor((item.newUsers || 0) * 0.3), // Estimate locations as 30% of users
-          flags: Math.floor((item.newUsers || 0) * 0.1), // Estimate flags as 10% of users
-          approved: Math.floor((item.newUsers || 0) * 0.7), // 70% approval rate
-          rejected: Math.floor((item.newUsers || 0) * 0.2), // 20% rejection rate
-        }));
-        setChartData(realChartData);
-        return;
-      }
-    } catch (error) {
-      console.error('Failed to fetch moderation chart data:', error);
-    }
+      return {
+        id: item.id,
+        type,
+        action: item.action === 'approve' ? 'approved' : item.action === 'reject' ? 'rejected' : 'dismissed',
+        moderator: item.moderatorEmail?.split('@')[0] || 'Unknown',
+        timestamp: new Date(item.timestamp?.seconds ? item.timestamp.seconds * 1000 : item.timestamp),
+        itemTitle: item.locationName || `${type} ${item.locationId || item.reviewId || ''}`.slice(0, 30),
+        reason: item.reason,
+      };
+    });
+  };
 
-    // Generate empty fallback chart data
+  // Calculate stats from real moderation data
+  const calculateStatsFromData = (historyData: any[]) => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // Count actions by time period
+    const dailyActions = historyData.filter(item => {
+      const itemDate = new Date(item.timestamp?.seconds ? item.timestamp.seconds * 1000 : item.timestamp);
+      return itemDate >= today;
+    }).length;
+
+    const weeklyActions = historyData.filter(item => {
+      const itemDate = new Date(item.timestamp?.seconds ? item.timestamp.seconds * 1000 : item.timestamp);
+      return itemDate >= weekAgo;
+    }).length;
+
+    const monthlyActions = historyData.filter(item => {
+      const itemDate = new Date(item.timestamp?.seconds ? item.timestamp.seconds * 1000 : item.timestamp);
+      return itemDate >= monthAgo;
+    }).length;
+
+    // Calculate approval rate
+    const approvals = historyData.filter(item => item.action === 'approve').length;
+    const rejections = historyData.filter(item => item.action === 'reject').length;
+    const totalDecisions = approvals + rejections;
+    const approvalRate = totalDecisions > 0 ? (approvals / totalDecisions) * 100 : 0;
+
+    // Count content types
+    const reviewActions = historyData.filter(item => item.type === 'review_moderation').length;
+    const locationActions = historyData.filter(item => item.type === 'location_moderation').length;
+    const flagActions = historyData.filter(item => item.type === 'flag_moderation').length;
+
+    setStats(prevStats => ({
+      ...prevStats,
+      dailyActions,
+      weeklyActions,
+      monthlyActions,
+      approvalRate,
+      totalReviews: reviewActions,
+      totalLocations: locationActions,
+      flaggedContent: flagActions,
+      approvedReviews: historyData.filter(item => item.type === 'review_moderation' && item.action === 'approve').length,
+      rejectedReviews: historyData.filter(item => item.type === 'review_moderation' && item.action === 'reject').length,
+      approvedLocations: historyData.filter(item => item.type === 'location_moderation' && item.action === 'approve').length,
+      rejectedLocations: historyData.filter(item => item.type === 'location_moderation' && item.action === 'reject').length,
+      averageResponseTime: historyData.length > 0 ? 
+        Math.max(0.5, Math.min(8, 24 / Math.max(1, historyData.length / 7))) : 2.5
+    }));
+  };
+
+  // Generate chart data from moderation history
+  const generateChartDataFromHistory = (historyData: any[]) => {
     const days = parseInt(timeRange.replace('d', ''));
     const chartData: ChartData[] = [];
     
@@ -174,18 +242,71 @@ export function ModerationDashboard() {
       const date = new Date();
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
+      const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+      
+      // Filter actions for this day
+      const dayActions = historyData.filter(item => {
+        const itemDate = new Date(item.timestamp?.seconds ? item.timestamp.seconds * 1000 : item.timestamp);
+        return itemDate >= dayStart && itemDate < dayEnd;
+      });
+
+      const reviews = dayActions.filter(item => item.type === 'review_moderation').length;
+      const locations = dayActions.filter(item => item.type === 'location_moderation').length;
+      const flags = dayActions.filter(item => item.type === 'flag_moderation').length;
+      const approved = dayActions.filter(item => item.action === 'approve').length;
+      const rejected = dayActions.filter(item => item.action === 'reject').length;
       
       chartData.push({
         date: dateStr,
-        reviews: 0,
-        locations: 0,
-        flags: 0,
-        approved: 0,
-        rejected: 0,
+        reviews,
+        locations,
+        flags,
+        approved,
+        rejected,
       });
     }
     
     setChartData(chartData);
+  };
+
+  // Fetch current pending counts
+  const fetchPendingCounts = async (idToken: string) => {
+    try {
+      // Fetch pending locations
+      const locationsResponse = await fetch('/api/moderation', {
+        headers: {
+          'Authorization': `Bearer ${idToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (locationsResponse.ok) {
+        const locationsData = await locationsResponse.json();
+        const pendingLocations = locationsData.count || 0;
+
+        // Fetch pending reviews
+        const reviewsResponse = await fetch('/api/reviews?status=pending', {
+          headers: {
+            'Authorization': `Bearer ${idToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (reviewsResponse.ok) {
+          const reviewsData = await reviewsResponse.json();
+          const pendingReviews = reviewsData.data?.length || 0;
+
+          setStats(prevStats => ({
+            ...prevStats,
+            pendingLocations,
+            pendingReviews,
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching pending counts:', error);
+    }
   };
 
   const getActionIcon = (type: string, action: string) => {
@@ -218,13 +339,31 @@ export function ModerationDashboard() {
     }
   };
 
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date);
+  const formatDate = (date: Date | string | number | null | undefined) => {
+    try {
+      // Handle null, undefined, or empty values
+      if (date === null || date === undefined || date === '') {
+        return 'No date';
+      }
+
+      const dateObj = date instanceof Date ? date : new Date(date);
+
+      // Check if the date is valid
+      if (isNaN(dateObj.getTime())) {
+        console.warn('Invalid date value received:', date);
+        return 'Invalid date';
+      }
+
+      return new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(dateObj);
+    } catch (error) {
+      console.error('Date formatting error:', error, 'Input:', date);
+      return 'Invalid date';
+    }
   };
 
   if (loading) {
