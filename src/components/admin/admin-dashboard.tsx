@@ -128,7 +128,15 @@ function AdminDashboard() {
     }
   };
 
-  const generateChartData = (data: Array<{ date: string; submissions: number }>) => {
+  const generateChartData = (data: Array<{ 
+    date: string; 
+    submissions: number;
+    users?: number;
+    locations?: number;
+    reviews?: number;
+    approvals?: number;
+    rejections?: number;
+  }>) => {
     if (data.length > 0) {
       // Transform the data to match ChartData interface
       const transformedData: ChartData[] = data.map(item => ({

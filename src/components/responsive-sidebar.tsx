@@ -249,7 +249,7 @@ export function ResponsiveSidebar({
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto">
         {/* Add top padding on mobile to account for fixed header */}
-        <div className={`${isMobile ? 'pt-20' : ''}`}>
+        <div className={`${isMobile ? 'pt-20 px-4' : 'p-6'}`}>
           {children}
         </div>
       </div>
