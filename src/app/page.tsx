@@ -583,6 +583,7 @@ export default function Home() {
           locations={searchResults.length > 0 ? searchResults : filteredLocations}
           selectedLocation={selectedLocation}
           onLocationSelect={(loc) => setSelectedLocation(loc)}
+          isSearchActive={searchResults.length > 0}
           onClose={() => setSelectedLocation(null)}
         />
       </div>
