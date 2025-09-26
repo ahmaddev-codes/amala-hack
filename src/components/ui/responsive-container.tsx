@@ -20,7 +20,7 @@ export function ResponsiveContainer({
     dashboard: "min-h-screen bg-gray-50 flex flex-col lg:flex-row overflow-hidden",
     content: "flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8",
     sidebar: "w-full lg:w-64 bg-white shadow-lg flex flex-col border-r border-gray-200",
-    modal: "fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50",
+    modal: "fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-black/30",
   };
 
   return (

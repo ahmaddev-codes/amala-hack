@@ -162,16 +162,20 @@ export function ResponsiveSidebar({
       </div>
 
       {/* Mobile Sidebar Overlay */}
-      {isMobile && isMobileMenuOpen && (
+      {isMobile && (
         <>
-          {/* Backdrop */}
+          {/* Backdrop with blur effect */}
           <div
-            className="fixed inset-0 z-50 bg-black bg-opacity-50 transition-opacity"
+            className={`fixed inset-0 z-50 backdrop-blur-sm bg-black/30 transition-all duration-300 ${
+              isMobileMenuOpen ? 'opacity-100 visible' : 'opacity-0 invisible'
+            }`}
             onClick={() => setIsMobileMenuOpen(false)}
           />
           
           {/* Sliding Sidebar */}
-          <div className="fixed top-0 left-0 bottom-0 z-50 w-80 bg-white shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col">
+          <div className={`fixed top-0 left-0 bottom-0 z-50 w-80 bg-white shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col ${
+            isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}>
             {/* Close Button */}
             <div className="flex items-center justify-between p-4 border-b">
               <div className="flex items-center space-x-3">
